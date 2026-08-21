@@ -372,6 +372,47 @@ class TestExtraPayments(PayrollCase):
 # =====================================================================
 # the payroll check
 # =====================================================================
+class TestMileageClaimLimits(PayrollCase):
+    """The same payroll with a claim cap and a form threshold switched on."""
+
+    rules_overrides = {
+        "reimbursements.mileage": {
+            "detect_from_reimbursement": True,
+            "whole_mile_tolerance": 0.005,
+            "minimum_miles": 40,
+            "eligible_service_types": ["Corporate (Invoiced)"],
+            "maximum_claimable_miles": 50,
+            "form_required_above_miles": 50,
+            "rates_by_effective_date": [
+                {"effective": "2026-01-01", "rate": 0.725},
+                {"effective": "2026-07-01", "rate": 0.76},
+            ],
+        },
+    }
+
+    def test_a_claim_over_the_cap_is_flagged(self):
+        # Hana Kimura claimed 54 miles; the cap here is 50.
+        self.assertIn("mileage_over_cap", self.codes("Hana Kimura"))
+
+    def test_a_claim_under_the_cap_is_not_flagged(self):
+        # Gwen Mabry claimed 40 miles.
+        self.assertNotIn("mileage_over_cap", self.codes("Gwen Mabry"))
+
+    def test_a_long_claim_is_told_to_have_a_form(self):
+        self.assertIn("mileage_needs_form", self.codes("Della Cruz"))
+
+    def test_the_claim_is_still_paid_in_full(self):
+        # Flagging is not the same as refusing. Amy decides.
+        hana = self.person("Hana Kimura")
+        self.assertEqual(hana.mileage_amount, money("41.04"))
+
+    def test_no_limits_means_no_flags(self):
+        # The shipped default has both limits switched off.
+        plain = Rules.load()
+        self.assertIsNone(plain.maximum_claimable_miles)
+        self.assertIsNone(plain.form_required_above_miles)
+
+
 class TestChecks(PayrollCase):
 
     not_in_onpay = {"Opal Grant"}

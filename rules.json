@@ -96,7 +96,10 @@
       "eligible_service_types": [
         "Corporate (Invoiced)"
       ],
-      "_eligibility_note": "Set eligible_service_types to [] to allow mileage on any job. Empirically, all 7 mileage reimbursements in the August 2026 export were Corporate jobs and the smallest was exactly 40 miles."
+      "_eligibility_note": "Set eligible_service_types to [] to allow mileage on any job. Empirically, all 7 mileage reimbursements in the August 2026 export were Corporate jobs and the smallest was exactly 40 miles.",
+      "maximum_claimable_miles": null,
+      "form_required_above_miles": null,
+      "_claim_limits_note": "Sitterwise policy (sitterwise.com/payroll-question) caps what a caregiver may claim and requires a form above a certain distance. Set maximum_claimable_miles to flag any claim over the cap, and form_required_above_miles to flag claims that should have a form on file. Both null means no limit is checked - which is how the app currently behaves, because every mileage claim in the August 2026 export (40 to 68 miles) was paid in full."
     }
   },
   "payable_statuses": {

@@ -224,6 +224,18 @@ class Rules:
         """Job types mileage may be claimed on. Empty means any job."""
         return set(self._mileage.get("eligible_service_types", []))
 
+    @property
+    def maximum_claimable_miles(self) -> Decimal | None:
+        """Most miles a caregiver may claim without it being questioned."""
+        value = self._mileage.get("maximum_claimable_miles")
+        return None if value is None else Decimal(str(value))
+
+    @property
+    def form_required_above_miles(self) -> Decimal | None:
+        """Distance above which a claim needs a form on file."""
+        value = self._mileage.get("form_required_above_miles")
+        return None if value is None else Decimal(str(value))
+
     def mileage_allowed_on(self, service_type: str) -> bool:
         eligible = self.mileage_eligible_service_types
         return not eligible or service_type in eligible

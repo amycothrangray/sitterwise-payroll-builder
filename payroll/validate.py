@@ -24,6 +24,12 @@ from .engine import CaregiverPayroll
 from .model import Job
 from .roster import RosterEntry
 from .rules import Rules
+from .money import money as money_value
+
+
+def money_at(miles: Decimal, rate) -> str:
+    """What a given number of miles is worth, for a message."""
+    return f"${money_value(miles * (rate or Decimal('0')))}"
 
 STOP = "stop"
 REVIEW = "review"
@@ -477,6 +483,30 @@ def _check_job(job: Job, caregiver: CaregiverPayroll, rules: Rules) -> list[Find
             f"trip shorter than the {rules.minimum_miles} miles a mileage claim needs. The app has "
             "not paid it as mileage.",
             "Check whether this should have been claimed at all.",
+            key, name, [job.booking_id],
+        ))
+
+    cap = rules.maximum_claimable_miles
+    if cap is not None and job.mileage_miles and job.mileage_miles > cap:
+        allowed = money_at(cap, job.mileage_rate)
+        out.append(Finding(
+            "mileage_over_cap", REVIEW,
+            f"{name} claimed more miles than the policy allows on {_when(job)}",
+            f"Booking {job.booking_id} claims {job.mileage_miles} miles ({job.mileage_amount}), "
+            f"but the most a caregiver may claim is {cap} miles ({allowed}).",
+            f"Either approve the extra deliberately, or correct it down to {allowed} as a "
+            "manual adjustment.",
+            key, name, [job.booking_id],
+        ))
+
+    form_above = rules.form_required_above_miles
+    if form_above is not None and job.mileage_miles and job.mileage_miles > form_above:
+        out.append(Finding(
+            "mileage_needs_form", REVIEW,
+            f"{name}'s claim on {_when(job)} needs a form on file",
+            f"Booking {job.booking_id} claims {job.mileage_miles} miles, over the "
+            f"{form_above} miles that can go through without one.",
+            "Check the form was submitted and approved before this is paid.",
             key, name, [job.booking_id],
         ))
 
