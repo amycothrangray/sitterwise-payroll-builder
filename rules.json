@@ -1,0 +1,105 @@
+{
+  "_comment": "Sitterwise payroll rules. Edit this file to change how payroll is calculated. Every payroll run records which version of this file it used, so reopening an old payroll shows the rules that were in force at the time.",
+  "version": "2026.08.1",
+  "effective_notes": "Defaults chosen 2026-08-21: conservative California overtime (8/40 + double time), weekly overtime OFF per Amy's decision, tier inferred from pay.",
+
+  "pay_rates": {
+    "_comment": "Hourly rates Sitterwise pays caregivers. 'label' is what Amy sees on screen.",
+    "tiers": [
+      { "key": "standard",       "label": "Regular",       "rate": 23.00 },
+      { "key": "three_to_four",  "label": "3-4 Children",  "rate": 28.00 }
+    ],
+    "rate_match_tolerance": 0.02
+  },
+
+  "minimum_booking": {
+    "_comment": "Sitterwise guarantees caregivers a minimum number of paid hours per booking. The hours above what was actually worked are GUARANTEE PAY, not hours worked, so they are paid but do NOT count toward overtime thresholds.",
+    "enabled": true,
+    "minimum_hours": 4.0,
+    "counts_toward_overtime": false,
+    "counts_toward_regular_rate": false
+  },
+
+  "overtime": {
+    "_comment": "California overtime. Amy chose the conservative 8/40 + double-time package on 2026-08-21, pending confirmation from an employment attorney. To switch to personal-attendant treatment (Domestic Worker Bill of Rights), set daily_threshold_hours to 9, weekly_threshold_hours to 45, and daily_double_time.enabled to false.",
+    "daily_overtime": {
+      "enabled": true,
+      "threshold_hours": 8.0,
+      "multiplier": 1.5
+    },
+    "daily_double_time": {
+      "enabled": true,
+      "threshold_hours": 12.0,
+      "multiplier": 2.0
+    },
+    "weekly_overtime": {
+      "_comment": "OFF by default per Amy's decision (daily overtime only). When off, the app still WARNS about anyone crossing the threshold so nothing is hidden.",
+      "enabled": false,
+      "threshold_hours": 40.0,
+      "multiplier": 1.5,
+      "warn_when_disabled": true
+    },
+    "seventh_consecutive_day": {
+      "_comment": "On the 7th consecutive day worked in a workweek: first 8 hours at 1.5x, everything beyond at 2x.",
+      "enabled": true,
+      "straight_hours": 8.0,
+      "multiplier": 1.5,
+      "beyond_multiplier": 2.0
+    },
+    "regular_rate_method": "weighted_average",
+    "overnight_attribution": "shift_start_day",
+    "workweek_start_day": "sunday",
+    "workweek_start_confirmed": false
+  },
+
+  "bonuses": {
+    "_comment": "Bonus and Lifesaver Bonus are taxable wages. If they are NON-discretionary, California law generally requires folding them into the regular rate, which raises overtime. The app does not do this automatically - it warns when a caregiver has both a bonus and overtime in the same week so Amy can decide.",
+    "include_in_regular_rate": false,
+    "warn_when_bonus_and_overtime_coincide": true
+  },
+
+  "tips": {
+    "_comment": "California: tips belong to the employee and are excluded from the regular rate for overtime. They are taxable wages but are entered in OnPay as their own category.",
+    "include_in_regular_rate": false,
+    "is_taxable_wages": true,
+    "onpay_category": "Tips"
+  },
+
+  "reimbursements": {
+    "_comment": "Business expense reimbursements under Labor Code 2802. Never taxable, never wages, never part of the regular rate.",
+    "is_taxable": false,
+    "include_in_regular_rate": false,
+    "mileage": {
+      "_comment": "Sitterwise has no mileage field - miles and the rate are multiplied by hand and typed into the single Reimbursement column. The app detects mileage by testing whether the reimbursement divides evenly into whole miles at the IRS rate in effect on the job date. Anything that does not is treated as an 'other' reimbursement. This inference goes away once Sitterwise stores miles properly.",
+      "detect_from_reimbursement": true,
+      "whole_mile_tolerance": 0.005,
+      "minimum_miles": 1,
+      "rates_by_effective_date": [
+        { "effective": "2025-01-01", "rate": 0.70,  "source": "IRS 2025 business standard mileage rate" },
+        { "effective": "2026-01-01", "rate": 0.725, "source": "IRS 2026 business standard mileage rate, Jan 1 - Jun 30" },
+        { "effective": "2026-07-01", "rate": 0.76,  "source": "IRS 2026 business standard mileage rate, Jul 1 - Dec 31" }
+      ]
+    }
+  },
+
+  "payable_statuses": {
+    "_comment": "Which Sitterwise booking statuses get paid. Amy's decision 2026-08-21: all completed jobs including Corporate and Group Childcare. 'confirmed' jobs are never paid, only flagged when they are past-dated.",
+    "pay": ["completed", "paid"],
+    "never_pay": ["cancelled", "pending"],
+    "flag_if_past_dated": ["confirmed"]
+  },
+
+  "service_types": {
+    "_comment": "All service types are paid the same way. Listed here so the app can warn about anything it has not seen before.",
+    "known": ["Babysitter", "Corporate (Invoiced)", "Group Childcare (Invoiced)", "Petsitter"]
+  },
+
+  "validation": {
+    "suspiciously_long_shift_hours": 12.0,
+    "suspiciously_short_shift_hours": 0.5,
+    "large_tip_warning": 200.00,
+    "large_reimbursement_warning": 200.00,
+    "hours_mismatch_tolerance": 0.01,
+    "test_client_patterns": ["test", "demo", "sample", "xxx"]
+  }
+}
