@@ -50,7 +50,9 @@ class Job:
     guarantee_hours: Decimal = Decimal("0")  # paid but not worked
     straight_pay: Decimal = Decimal("0")
     guarantee_pay: Decimal = Decimal("0")
-    mileage_miles: Decimal | None = None
+    mileage_miles: Decimal | None = None        # the round trip
+    mileage_payable_miles: Decimal | None = None  # what policy pays for
+    mileage_policy_amount: Decimal | None = None  # what policy says to pay
     mileage_rate: Decimal | None = None
     mileage_amount: Decimal = Decimal("0")
     other_reimbursement: Decimal = Decimal("0")

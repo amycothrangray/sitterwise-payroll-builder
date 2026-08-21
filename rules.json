@@ -73,7 +73,7 @@
     "is_taxable": false,
     "include_in_regular_rate": false,
     "mileage": {
-      "_comment": "Mileage is only paid on Care.com (Corporate) jobs, and only for trips of 40 miles or more. Sitterwise has no mileage field, so the app recognises mileage by testing whether the reimbursement is a whole number of miles at the IRS rate in force that day - but ONLY on jobs that qualify. A mileage-shaped amount on a job that does not qualify is treated as an ordinary reimbursement and flagged, because paying it would wipe out the commission on the job.",
+      "_comment": "Mileage policy, from sitterwise.com/mileage-request. Care.com jobs only - not hotel jobs, not other private residence jobs. Only the miles ABOVE 40 round trip are paid: a 60-mile round trip pays 20 miles. Trips of 40-50 miles are submitted at check-out; anything over 50 miles must be approved in advance on the mileage request form.",
       "detect_from_reimbursement": true,
       "whole_mile_tolerance": 0.005,
       "minimum_miles": 40,
@@ -98,9 +98,11 @@
         "Corporate (Invoiced)"
       ],
       "_eligibility_note": "Set eligible_service_types to [] to allow mileage on any job. Empirically, all 7 mileage reimbursements in the August 2026 export were Corporate jobs and the smallest was exactly 40 miles.",
-      "maximum_claimable_miles": null,
-      "form_required_above_miles": null,
-      "_claim_limits_note": "Sitterwise policy (sitterwise.com/payroll-question) caps what a caregiver may claim and requires a form above a certain distance. Set maximum_claimable_miles to flag any claim over the cap, and form_required_above_miles to flag claims that should have a form on file. Both null means no limit is checked - which is how the app currently behaves, because every mileage claim in the August 2026 export (40 to 68 miles) was paid in full."
+      "form_required_above_miles": 50,
+      "deduct_first_miles": 40,
+      "no_form_band_max_miles": 50,
+      "amount_represents": "whole_trip",
+      "_amount_represents_note": "What the Reimbursement figure in the export actually stands for. 'whole_trip' means the amount covers every mile driven; 'payable_miles' means the 40-mile deduction was already taken off before it was entered. Set to whole_trip because in the August 2026 export all seven mileage claims are over by exactly $30.40 - forty miles at $0.76 - and not one claim falls in the $0.76 to $7.60 range a correct 40-50 mile claim would produce."
     }
   },
   "payable_statuses": {

@@ -79,8 +79,11 @@ later run unless you deliberately unlock it.
   sum shown on the card.
 - **Tips** — kept out of wages and out of the overtime rate. Their own OnPay
   category.
-- **Mileage** — Care.com jobs only, 40 miles or more. A mileage-shaped amount
-  on any other job is paid as an ordinary reimbursement and flagged.
+- **Mileage** — Care.com jobs only, and only the miles **above 40** on a round
+  trip. A mileage-shaped amount on any other job is paid as an ordinary
+  reimbursement and flagged, as is anything over 50 miles that needed advance
+  approval, and anything that looks like the whole drive was paid rather than
+  the part policy covers.
 - **Reimbursements** — never taxable, never mixed with wages.
 
 ---
@@ -143,7 +146,7 @@ their support for both, then set the column names in Settings.
 python3 -m unittest discover -s tests -t .
 ```
 
-71 tests. To run the regression tests against a real export, drop one in
+76 tests. To run the regression tests against a real export, drop one in
 `tests/fixtures/real/` — that folder is kept out of git because real exports
 contain client names and phone numbers.
 

@@ -383,14 +383,28 @@ def _split_reimbursement(job: Job, cell, rules: Rules) -> None:
         miles = job.reimbursement / rate_used
         nearest = miles.quantize(Decimal("1"))
         looks_like_mileage = abs(miles - nearest) <= rules.whole_mile_tolerance
-        if looks_like_mileage and nearest >= rules.minimum_miles and eligible:
-            job.mileage_miles = nearest
+
+        # What the figure stands for depends on whether the 40-mile deduction
+        # was taken off before it was entered. Work out the round trip either
+        # way, because eligibility is judged on the whole drive.
+        if rules.mileage_amount_is_whole_trip:
+            round_trip, payable = nearest, rules.payable_miles(nearest)
+        else:
+            payable = nearest
+            round_trip = nearest + rules.deduct_first_miles
+
+        if looks_like_mileage and round_trip >= rules.minimum_miles and eligible:
+            job.mileage_miles = round_trip
+            job.mileage_payable_miles = payable
             job.mileage_rate = rate_used
             job.mileage_amount = job.reimbursement
+            job.mileage_policy_amount = (payable * rate_used).quantize(Decimal("0.01"))
             job.import_notes.append(
                 f"Treated as mileage: ${job.reimbursement} is exactly {nearest} miles at "
-                f"${rate_used} a mile. Sitterwise has no mileage field, so the app worked "
-                "this out from the amount."
+                f"${rate_used} a mile"
+                + (f", read as a {round_trip}-mile round trip, of which {payable} are payable."
+                   if rules.deduct_first_miles else ".")
+                + " Sitterwise has no mileage field, so the app worked this out from the amount."
             )
             return
         if looks_like_mileage and not eligible:
@@ -403,12 +417,12 @@ def _split_reimbursement(job: Job, cell, rules: Rules) -> None:
                 "as mileage."
             )
             return
-        if looks_like_mileage and nearest < rules.minimum_miles:
+        if looks_like_mileage and round_trip < rules.minimum_miles:
             job.other_reimbursement = job.reimbursement
             job.mileage_rejected_reason = "under_minimum"
             job.import_notes.append(
-                f"${job.reimbursement} works out to {nearest} miles, under the "
-                f"{rules.minimum_miles}-mile minimum for a mileage claim. NOT treated as mileage."
+                f"${job.reimbursement} works out to a {round_trip}-mile round trip, under the "
+                f"{rules.minimum_miles} miles a mileage claim needs. NOT treated as mileage."
             )
             return
 

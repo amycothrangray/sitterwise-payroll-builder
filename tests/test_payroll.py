@@ -357,6 +357,14 @@ class TestExtraPayments(PayrollCase):
         self.assertEqual(hana.reimbursements, money("41.04"))
         self.assertEqual(hana.total_paid, money("259.04"))
 
+    def test_the_round_trip_and_the_payable_miles_are_both_recorded(self):
+        # Hana Kimura: $41.04 is a 54-mile round trip, of which 14 are payable.
+        hana = self.person("Hana Kimura")
+        job = next(j for j in hana.jobs if j.mileage_miles)
+        self.assertEqual(job.mileage_miles, Decimal("54"))
+        self.assertEqual(job.mileage_payable_miles, Decimal("14"))
+        self.assertEqual(job.mileage_policy_amount, money("10.64"))
+
     def test_mileage_on_a_job_that_does_not_qualify_is_not_paid_as_mileage(self):
         # Faye Nakamura claimed exactly 40 miles - on a Babysitter job.
         # Mileage is Care.com only, so it must not go through as mileage.
@@ -365,7 +373,7 @@ class TestExtraPayments(PayrollCase):
         self.assertEqual(faye.other_reimbursement, money("30.40"))
         self.assertIn("mileage_not_allowed", self.codes("Faye Nakamura"))
 
-    def test_a_care_com_claim_under_forty_miles_is_flagged(self):
+    def test_a_care_com_claim_under_the_minimum_is_flagged(self):
         nadia = self.person("Nadia Okoro")
         self.assertEqual(nadia.mileage_amount, money("0"))
         self.assertIn("mileage_under_minimum", self.codes("Nadia Okoro"))
@@ -385,45 +393,78 @@ class TestExtraPayments(PayrollCase):
 # =====================================================================
 # the payroll check
 # =====================================================================
-class TestMileageClaimLimits(PayrollCase):
-    """The same payroll with a claim cap and a form threshold switched on."""
+class TestMileagePolicy(PayrollCase):
+    """Only the miles above 40 on a round trip are paid, and anything over 50
+    miles needs approving in advance. Care.com jobs only."""
 
-    rules_overrides = {
-        "reimbursements.mileage": {
-            "detect_from_reimbursement": True,
-            "whole_mile_tolerance": 0.005,
-            "minimum_miles": 40,
-            "eligible_service_types": ["Corporate (Invoiced)"],
-            "maximum_claimable_miles": 50,
-            "form_required_above_miles": 50,
-            "rates_by_effective_date": [
-                {"effective": "2026-01-01", "rate": 0.725},
-                {"effective": "2026-07-01", "rate": 0.76},
-            ],
-        },
-    }
+    def test_only_the_miles_above_forty_are_payable(self):
+        for trip, payable in ((40, 0), (45, 5), (55, 15), (68, 28)):
+            self.assertEqual(self.rules.payable_miles(Decimal(trip)), Decimal(payable))
 
-    def test_a_claim_over_the_cap_is_flagged(self):
-        # Hana Kimura claimed 54 miles; the cap here is 50.
-        self.assertIn("mileage_over_cap", self.codes("Hana Kimura"))
+    def test_a_forty_mile_round_trip_pays_nothing(self):
+        # Gwen Mabry's $30.40 is exactly 40 miles - the eligibility floor, so
+        # there are no miles above it to pay for.
+        gwen = self.person("Gwen Mabry")
+        job = next(j for j in gwen.jobs if j.mileage_miles)
+        self.assertEqual(job.mileage_miles, Decimal("40"))
+        self.assertEqual(job.mileage_payable_miles, Decimal("0"))
+        self.assertEqual(job.mileage_policy_amount, money("0.00"))
+        self.assertIn("mileage_deduction_not_applied", self.codes("Gwen Mabry"))
 
-    def test_a_claim_under_the_cap_is_not_flagged(self):
-        # Gwen Mabry claimed 40 miles.
-        self.assertNotIn("mileage_over_cap", self.codes("Gwen Mabry"))
+    def test_the_claim_is_still_paid_and_the_difference_is_shown(self):
+        # Flagging is not refusing. The exported amount goes through and Amy
+        # decides whether to correct it.
+        gwen = self.person("Gwen Mabry")
+        self.assertEqual(gwen.mileage_amount, money("30.40"))
+        finding = next(f for f in self.payroll.findings
+                       if f.code == "mileage_deduction_not_applied"
+                       and f.caregiver_name == "Gwen Mabry")
+        self.assertIn("$0.00", finding.detail)
+        self.assertIn("$30.40", finding.detail)
 
-    def test_a_long_claim_is_told_to_have_a_form(self):
-        self.assertIn("mileage_needs_form", self.codes("Della Cruz"))
+    def test_over_fifty_miles_needs_advance_approval(self):
+        # Hana Kimura's 54-mile round trip is over the 50-mile line.
+        self.assertIn("mileage_needs_form", self.codes("Hana Kimura"))
 
-    def test_the_claim_is_still_paid_in_full(self):
-        # Flagging is not the same as refusing. Amy decides.
-        hana = self.person("Hana Kimura")
-        self.assertEqual(hana.mileage_amount, money("41.04"))
+    def test_a_trip_inside_the_band_does_not_need_a_form(self):
+        # Gwen's 40 miles is inside the 40-50 band submitted at check-out.
+        self.assertNotIn("mileage_needs_form", self.codes("Gwen Mabry"))
 
-    def test_no_limits_means_no_flags(self):
-        # The shipped default has both limits switched off.
-        plain = Rules.load()
-        self.assertIsNone(plain.maximum_claimable_miles)
-        self.assertIsNone(plain.form_required_above_miles)
+    def test_a_trip_under_forty_miles_is_not_mileage_at_all(self):
+        nadia = self.person("Nadia Okoro")
+        self.assertEqual(nadia.mileage_amount, money("0"))
+        self.assertIn("mileage_under_minimum", self.codes("Nadia Okoro"))
+
+    def test_mileage_stays_care_com_only(self):
+        # The policy says Care.com jobs only - not hotels, not other homes.
+        faye = self.person("Faye Nakamura")
+        self.assertEqual(faye.mileage_amount, money("0"))
+        self.assertIn("mileage_not_allowed", self.codes("Faye Nakamura"))
+
+
+class TestMileageAlreadyDeducted(PayrollCase):
+    """The same payroll once Sitterwise takes the 40 miles off before export."""
+
+    rules_overrides = {"reimbursements.mileage.amount_represents": "payable_miles"}
+
+    def test_a_correct_claim_passes_without_comment(self):
+        # Pearl Adeyemi's $3.80 is 5 payable miles: a 45-mile round trip,
+        # correctly reimbursed for the 5 miles above 40.
+        pearl = self.person("Pearl Adeyemi")
+        job = next(j for j in pearl.jobs if j.mileage_miles)
+        self.assertEqual(job.mileage_payable_miles, Decimal("5"))
+        self.assertEqual(job.mileage_miles, Decimal("45"))
+        self.assertEqual(job.mileage_policy_amount, money("3.80"))
+        self.assertNotIn("mileage_deduction_not_applied", self.codes("Pearl Adeyemi"))
+        self.assertNotIn("mileage_needs_form", self.codes("Pearl Adeyemi"))
+
+    def test_small_correct_claims_are_not_mistaken_for_something_else(self):
+        # Under the whole-trip reading, $3.80 looks like a 5-mile trip and gets
+        # rejected as under the minimum. It must not once the deduction is
+        # already applied.
+        pearl = self.person("Pearl Adeyemi")
+        self.assertEqual(pearl.mileage_amount, money("3.80"))
+        self.assertEqual(pearl.other_reimbursement, money("0"))
 
 
 class TestChecks(PayrollCase):

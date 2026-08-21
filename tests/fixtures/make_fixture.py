@@ -124,6 +124,13 @@ def build_rows() -> list[dict]:
     add(booking("Nadia Okoro", d(5), "09:00", 4, 23, service="Corporate (Invoiced)",
                 reimbursement="15.20", client="Care Family"))
 
+    # -- a claim that follows the policy exactly ----------------------------
+    # 45-mile round trip pays the 5 miles above 40: 5 x $0.76 = $3.80.
+    # Only recognised when Settings say the amount is already the payable
+    # figure rather than the whole drive.
+    add(booking("Pearl Adeyemi", d(4), "09:00", 5, 23, service="Corporate (Invoiced)",
+                reimbursement="3.80", client="Care Family"))
+
     # -- both a tip and a reimbursement -----------------------------------
     add(booking("Hana Kimura", d(8), "12:00", 6, 28, status="paid", tip="50.00",
                 reimbursement="41.04", service="Corporate (Invoiced)", client="Care Family"))

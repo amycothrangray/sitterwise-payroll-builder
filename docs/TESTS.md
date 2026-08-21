@@ -26,25 +26,25 @@ spans two of those weeks so the weekly grouping gets exercised.
 
 | | |
 |---|---|
-| Caregivers | 24 |
-| Jobs paid | 43 |
+| Caregivers | 25 |
+| Jobs paid | 44 |
 | 3-4 Children hours | 27.00 at $28.00 = $756.00 |
 | Unknown rate hours | 4.00 at $25.00 = $99.99 |
-| Regular hours | 199.50 at $23.00 = $4588.50 |
+| Regular hours | 204.50 at $23.00 = $4703.50 |
 | Minimum-guarantee hours | 1.50 = $34.50 |
 | Overtime | 16.00 hrs, $186.50 premium |
 | Double time | 1.00 hrs, $23.00 premium |
 | Tips | $125.00 |
 | Bonuses | $15.00 |
 | Mileage | 194 miles = $147.44 |
-| Other reimbursements | $68.10 |
-| **Taxable earnings** | **$5828.49** |
-| **Reimbursements** | **$215.54** |
-| **Total being paid** | **$6044.03** |
+| Other reimbursements | $71.90 |
+| **Taxable earnings** | **$5943.49** |
+| **Reimbursements** | **$219.34** |
+| **Total being paid** | **$6162.83** |
 
-Payroll check: **11 ready, 7 needing a look, 6 that cannot be paid**.
+Payroll check: **9 ready, 10 needing a look, 6 that cannot be paid**.
 
-Reconciliation: 45 jobs dated in this period, 43 paid, 43 accounted for. 1 left out (status is cancelled). 1 left out (worked but never closed out in sitterwise). Balances: **yes**.
+Reconciliation: 46 jobs dated in this period, 44 paid, 44 accounted for. 1 left out (status is cancelled). 1 left out (worked but never closed out in sitterwise). Balances: **yes**.
 
 ---
 
@@ -222,13 +222,13 @@ Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an 
 
 | Date | Booking | Hours | Rate | Straight pay | |
 |---|---|---:|---:|---:|---|
-| 2026-08-03 | 90028 | 4.00 | $23.00 | $92.00 |  |
-| 2026-08-04 | 90029 | 4.00 | $23.00 | $92.00 |  |
-| 2026-08-05 | 90030 | 4.00 | $23.00 | $92.00 |  |
-| 2026-08-06 | 90031 | 4.00 | $23.00 | $92.00 |  |
-| 2026-08-07 | 90032 | 4.00 | $23.00 | $92.00 |  |
-| 2026-08-08 | 90033 | 4.00 | $23.00 | $92.00 |  |
-| 2026-08-09 | 90034 | 4.00 | $23.00 | $92.00 |  |
+| 2026-08-03 | 90029 | 4.00 | $23.00 | $92.00 |  |
+| 2026-08-04 | 90030 | 4.00 | $23.00 | $92.00 |  |
+| 2026-08-05 | 90031 | 4.00 | $23.00 | $92.00 |  |
+| 2026-08-06 | 90032 | 4.00 | $23.00 | $92.00 |  |
+| 2026-08-07 | 90033 | 4.00 | $23.00 | $92.00 |  |
+| 2026-08-08 | 90034 | 4.00 | $23.00 | $92.00 |  |
+| 2026-08-09 | 90035 | 4.00 | $23.00 | $92.00 |  |
 
 **The overtime:**
 
@@ -257,12 +257,12 @@ Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an 
 
 | Date | Booking | Hours | Rate | Straight pay | |
 |---|---|---:|---:|---:|---|
-| 2026-08-03 | 90035 | 7.00 | $23.00 | $161.00 |  |
-| 2026-08-04 | 90036 | 7.00 | $23.00 | $161.00 |  |
-| 2026-08-05 | 90037 | 7.00 | $23.00 | $161.00 |  |
-| 2026-08-06 | 90038 | 7.00 | $23.00 | $161.00 |  |
-| 2026-08-07 | 90039 | 7.00 | $23.00 | $161.00 |  |
-| 2026-08-08 | 90040 | 7.00 | $23.00 | $161.00 |  |
+| 2026-08-03 | 90036 | 7.00 | $23.00 | $161.00 |  |
+| 2026-08-04 | 90037 | 7.00 | $23.00 | $161.00 |  |
+| 2026-08-05 | 90038 | 7.00 | $23.00 | $161.00 |  |
+| 2026-08-06 | 90039 | 7.00 | $23.00 | $161.00 |  |
+| 2026-08-07 | 90040 | 7.00 | $23.00 | $161.00 |  |
+| 2026-08-08 | 90041 | 7.00 | $23.00 | $161.00 |  |
 
 **What they are paid:**
 
@@ -286,7 +286,7 @@ Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an 
 
 | Date | Booking | Hours | Rate | Straight pay | |
 |---|---|---:|---:|---:|---|
-| 2026-08-03 | 90041 | 9.00 | $23.00 | $207.00 | bonus $15.00 |
+| 2026-08-03 | 90042 | 9.00 | $23.00 | $207.00 | bonus $15.00 |
 
 **The overtime:**
 
@@ -320,7 +320,7 @@ Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an 
 
 | Date | Booking | Hours | Rate | Straight pay | |
 |---|---|---:|---:|---:|---|
-| 2026-08-07 | 90025 | 2.50 | $23.00 | $57.50 | paid for 4.00, 4-hr minimum |
+| 2026-08-07 | 90026 | 2.50 | $23.00 | $57.50 | paid for 4.00, 4-hr minimum |
 
 **What they are paid:**
 
@@ -373,6 +373,10 @@ Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an 
 | Mileage: 40 miles | $30.40 |
 | **Total being paid** | **$145.40** |
 
+**What the payroll check says:**
+
+- **Needs a look** - Gwen Mabry's mileage on Aug 7 looks like the whole drive, not the part that gets paid. Booking 90014 paid 30.40, which is 40 miles at $0.7600 a mile. Policy pays only the miles above 40 on a round trip, so a 40-mile round trip pays 0 miles - $0.00. That is $30.40 more than policy.
+
 ---
 
 ## Sofia Bright
@@ -404,7 +408,7 @@ Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an 
 
 | Date | Booking | Hours | Rate | Straight pay | |
 |---|---|---:|---:|---:|---|
-| 2026-08-08 | 90019 | 6.00 | $28.00 | $168.00 | tip $50.00; 54 mi = $41.04 |
+| 2026-08-08 | 90020 | 6.00 | $28.00 | $168.00 | tip $50.00; 54 mi = $41.04 |
 
 **What they are paid:**
 
@@ -415,6 +419,11 @@ Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an 
 | **Taxable earnings** | **$218.00** |
 | Mileage: 54 miles | $41.04 |
 | **Total being paid** | **$259.04** |
+
+**What the payroll check says:**
+
+- **Needs a look** - Hana Kimura's mileage on Aug 8 looks like the whole drive, not the part that gets paid. Booking 90020 paid 41.04, which is 54 miles at $0.7600 a mile. Policy pays only the miles above 40 on a round trip, so a 54-mile round trip pays 14 miles - $10.64. That is $30.40 more than policy.
+- **Needs a look** - Hana Kimura's drive on Aug 8 needed approving in advance. Booking 90020 covers 54 miles round trip. Anything over 50 miles has to be approved before the job, on the mileage request form.
 
 ---
 
@@ -489,7 +498,9 @@ Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an 
 
 **What the payroll check says:**
 
+- **Needs a look** - Della Cruz's mileage on Aug 7 looks like the whole drive, not the part that gets paid. Booking 90017 paid 76.00, which is 100 miles at $0.7600 a mile. Policy pays only the miles above 40 on a round trip, so a 100-mile round trip pays 60 miles - $45.60. That is $30.40 more than policy.
 - **Needs a look** - Della Cruz's mileage on Aug 7 is more than Sitterwise earned on the job. Booking 90017 pays 76.00 of mileage (100 miles) but Sitterwise's cut on it is only 48.00. That job loses money.
+- **Needs a look** - Della Cruz's drive on Aug 7 needed approving in advance. Booking 90017 covers 100 miles round trip. Anything over 50 miles has to be approved before the job, on the mileage request form.
 
 ---
 
@@ -536,8 +547,8 @@ Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an 
 
 | Date | Booking | Hours | Rate | Straight pay | |
 |---|---|---:|---:|---:|---|
-| 2026-08-05 | 90022 | 5.00 | $23.00 | $115.00 |  |
-| 2026-08-05 | 90023 | 4.00 | $23.00 | $92.00 |  |
+| 2026-08-05 | 90023 | 5.00 | $23.00 | $115.00 |  |
+| 2026-08-05 | 90024 | 4.00 | $23.00 | $92.00 |  |
 
 **The overtime:**
 
@@ -558,7 +569,7 @@ Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an 
 
 **What the payroll check says:**
 
-- **CANNOT BE PAID** - Ada Whitlow is booked in two places at once. Booking 90022 runs Aug 5 9:00 AM to 2:00 PM, and booking 90023 starts at 12:00 PM before that one ends. One person cannot work both, so these hours are being counted twice.
+- **CANNOT BE PAID** - Ada Whitlow is booked in two places at once. Booking 90023 runs Aug 5 9:00 AM to 2:00 PM, and booking 90024 starts at 12:00 PM before that one ends. One person cannot work both, so these hours are being counted twice.
 
 ---
 
@@ -570,7 +581,7 @@ Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an 
 
 | Date | Booking | Hours | Rate | Straight pay | |
 |---|---|---:|---:|---:|---|
-| 2026-08-06 | 90024 | 4.00 | not recognised | $99.99 |  |
+| 2026-08-06 | 90025 | 4.00 | not recognised | $99.99 |  |
 
 **What they are paid:**
 
@@ -582,7 +593,7 @@ Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an 
 
 **What the payroll check says:**
 
-- **CANNOT BE PAID** - June Salter's job on Aug 6 does not match a known pay rate. Booking 90024 paid 99.99 for 4.00 hours. That is not $23.00 or $28.00 an hour, so the app cannot tell which rate was meant.
+- **CANNOT BE PAID** - June Salter's job on Aug 6 does not match a known pay rate. Booking 90025 paid 99.99 for 4.00 hours. That is not $23.00 or $28.00 an hour, so the app cannot tell which rate was meant.
 
 ---
 
@@ -594,7 +605,7 @@ Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an 
 
 | Date | Booking | Hours | Rate | Straight pay | |
 |---|---|---:|---:|---:|---|
-| 2026-08-04 | 90026 | 6.00 | $23.00 | $138.00 |  |
+| 2026-08-04 | 90027 | 6.00 | $23.00 | $138.00 |  |
 
 **What they are paid:**
 

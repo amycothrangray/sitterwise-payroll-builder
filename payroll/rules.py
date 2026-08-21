@@ -225,16 +225,29 @@ class Rules:
         return set(self._mileage.get("eligible_service_types", []))
 
     @property
-    def maximum_claimable_miles(self) -> Decimal | None:
-        """Most miles a caregiver may claim without it being questioned."""
-        value = self._mileage.get("maximum_claimable_miles")
-        return None if value is None else Decimal(str(value))
+    def deduct_first_miles(self) -> Decimal:
+        """Miles at the start of a trip that are not paid for.
+
+        Sitterwise pays only the miles above 40 on a round trip, so a 60-mile
+        round trip pays 20 miles.
+        """
+        return Decimal(str(self._mileage.get("deduct_first_miles", 0)))
 
     @property
     def form_required_above_miles(self) -> Decimal | None:
-        """Distance above which a claim needs a form on file."""
+        """Round-trip distance above which a claim needs advance approval."""
         value = self._mileage.get("form_required_above_miles")
         return None if value is None else Decimal(str(value))
+
+    @property
+    def mileage_amount_is_whole_trip(self) -> bool:
+        """Whether the exported amount covers the whole trip or only the
+        miles that policy actually pays for."""
+        return self._mileage.get("amount_represents", "whole_trip") == "whole_trip"
+
+    def payable_miles(self, round_trip_miles: Decimal) -> Decimal:
+        """What policy actually pays for on a trip of this length."""
+        return max(Decimal("0"), Decimal(round_trip_miles) - self.deduct_first_miles)
 
     def mileage_allowed_on(self, service_type: str) -> bool:
         eligible = self.mileage_eligible_service_types

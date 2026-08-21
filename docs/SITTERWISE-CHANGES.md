@@ -64,19 +64,36 @@ the rule out from the arithmetic.
 
 ### 4. Mileage, properly gated
 
-Mileage is Care.com only, 40-mile minimum. All seven mileage reimbursements in
-the August export were Corporate jobs and the smallest was exactly 40 miles —
-the policy is being followed by people, with nothing enforcing it.
+The policy (sitterwise.com/mileage-request) is:
+
+- **Care.com jobs only.** Not hotel jobs, not other private residence jobs.
+- **Only the miles above 40 on a round trip are paid.** A 60-mile round trip
+  pays 20 miles.
+- **40-50 miles** is submitted at check-out.
+- **Over 50 miles** must be approved in advance on the mileage request form.
+- A Google Maps screenshot of the route is required.
+
+**None of that is enforced anywhere.** It is a page a caregiver reads, a
+number they type, and a figure somebody multiplies by hand.
+
+In the August 2026 export every one of the seven mileage claims was paid for
+the **whole** round trip rather than the miles above 40. Every single one is
+over by exactly $30.40 - forty miles at $0.76 - which totals **$212.80 for the
+month**. Two of them were 40-mile round trips that should have paid nothing at
+all. Four were over 50 miles and needed advance approval.
+
+That is not a people problem. Nobody should be doing this arithmetic.
 
 **Do not add a plain mileage field to the booking form.** Someone will fill it
 in on a regular job. On a 4-hour Babysitter job Sitterwise earns $48; a
-60-mile claim is $45.60. One mistake wipes out the job.
+60-mile claim at the full rate is $45.60. One mistake wipes out the job.
 
 **Put the flag on the client account, not the job type:**
 
 ```
 client.mileage_program_enabled    boolean, default FALSE
-client.mileage_minimum_miles      number,  default 40
+client.mileage_deduct_first_miles number,  default 40
+client.mileage_band_max_miles     number,  default 50   -- no form needed up to here
 client.mileage_rate               number,  default 0.76
 ```
 
@@ -91,19 +108,23 @@ Better than keying off Service Type: when the threshold changes, or a second
 corporate client joins the programme, it is a setting rather than a code
 change.
 
-**Make the request a separate record, not a field:**
+**Make the request a separate record, and let the system do the sums:**
 
 ```
 mileage_request
   booking_id
-  round_trip_miles
-  status              requested | approved | rejected
-  rate_snapshot       locked at approval so history never shifts
-  amount              derived: miles x rate_snapshot
-  approved_by         admin user
-  approved_at
-  rejection_reason
+  round_trip_miles       what the caregiver entered
+  payable_miles          DERIVED: max(0, round_trip_miles - 40)
+  rate_snapshot          locked at approval so history never shifts
+  amount                 DERIVED: payable_miles x rate_snapshot
+  needs_form             DERIVED: round_trip_miles > 50
+  route_screenshot       required
+  status                 requested | approved | rejected
+  approved_by / approved_at / rejection_reason
 ```
+
+`payable_miles` and `amount` must be **computed, never entered**. That single
+change would have prevented all $212.80 of last month's overpayment.
 
 Only `approved` requests reach payroll. That one rule is the whole protection.
 
@@ -111,38 +132,55 @@ Only `approved` requests reach payroll. That one rule is the whole protection.
 
 1. The form does not render the mileage option on an ineligible booking.
 2. The API rejects a mileage request against an ineligible booking, even a
-   hand-crafted one.
-3. Nothing is payable until an admin approves it.
+   hand-crafted one, and recomputes the amount rather than trusting it.
+3. A request over 50 miles cannot reach `approved` without the advance form.
 
 Gate 1 alone is what usually gets built. It is the one that fails.
+
+**Show the caregiver the arithmetic as they type it.** The existing form
+already does this well - "Total Miles above 40" and "Amount" update live. Put
+the same two lines in the check-out flow so nobody is surprised by what lands
+in their pay:
+
+```
+Round trip:        54 miles
+Paid for:          14 miles  (the miles above 40)
+Amount:            $10.64
+```
 
 **Show the money at risk on the approval screen:**
 
 ```
-Mileage requested:      54 miles x $0.76 = $41.04
+Mileage requested:      14 payable miles x $0.76 = $10.64
 Sitterwise cut on job:  $48.00
-Left after mileage:     $6.96            <-- warn
+Left after mileage:     $37.36
 ```
 
 **Put the policy in front of the caregiver, at the moment they claim.** On
-Care.com jobs only, the checkout screen should say in plain words what can be
+Care.com jobs only, the check-out screen should say in plain words what can be
 claimed, what the limit is, and what needs a form - so nobody is guessing from
 memory. On every other job the mileage option should not appear at all, and
 saying nothing is the right thing to say.
 
+**Add the Care.com job number to the booking and to the export.** The mileage
+form asks for it, and notes that Care.com job numbers begin with 5 while
+Sitterwise ones begin with 1. It is not in the bookings export at all, so
+nothing downstream can tie a mileage request back to the job it belongs to.
+
+```
+care_com_job_number     text, only on Care.com bookings
+```
+
 **Worth considering:** if Sitterwise holds the caregiver's home address it can
 compute home -> job -> home itself and store `computed_round_trip_miles`
 alongside what was claimed. The request then becomes "confirm 54 miles" rather
-than "type a number", and a mismatch flags itself.
+than "type a number", and a mismatch flags itself. It would also replace the
+Google Maps screenshot.
 
 **Also worth checking:** if Care.com reimburses Sitterwise for mileage, the
 approved request should raise the client charge at the same time it raises the
-caregiver payment — one record driving both sides. Then mileage never costs
+caregiver payment - one record driving both sides. Then mileage never costs
 Sitterwise anything and the commission risk disappears for eligible jobs.
-
----
-
-## Should have
 
 ### 5. Bring the reimbursement type into the export
 

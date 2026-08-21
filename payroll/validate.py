@@ -23,13 +23,8 @@ from decimal import Decimal
 from .engine import CaregiverPayroll
 from .model import Job
 from .roster import RosterEntry
-from .rules import Rules
 from .money import money as money_value
-
-
-def money_at(miles: Decimal, rate) -> str:
-    """What a given number of miles is worth, for a message."""
-    return f"${money_value(miles * (rate or Decimal('0')))}"
+from .rules import Rules
 
 STOP = "stop"
 REVIEW = "review"
@@ -486,29 +481,40 @@ def _check_job(job: Job, caregiver: CaregiverPayroll, rules: Rules) -> list[Find
             key, name, [job.booking_id],
         ))
 
-    cap = rules.maximum_claimable_miles
-    if cap is not None and job.mileage_miles and job.mileage_miles > cap:
-        allowed = money_at(cap, job.mileage_rate)
-        out.append(Finding(
-            "mileage_over_cap", REVIEW,
-            f"{name} claimed more miles than the policy allows on {_when(job)}",
-            f"Booking {job.booking_id} claims {job.mileage_miles} miles ({job.mileage_amount}), "
-            f"but the most a caregiver may claim is {cap} miles ({allowed}).",
-            f"Either approve the extra deliberately, or correct it down to {allowed} as a "
-            "manual adjustment.",
-            key, name, [job.booking_id],
-        ))
+    if job.mileage_miles:
+        trip = Decimal(job.mileage_miles)
+        rate_used = job.mileage_rate or ZERO
 
-    form_above = rules.form_required_above_miles
-    if form_above is not None and job.mileage_miles and job.mileage_miles > form_above:
-        out.append(Finding(
-            "mileage_needs_form", REVIEW,
-            f"{name}'s claim on {_when(job)} needs a form on file",
-            f"Booking {job.booking_id} claims {job.mileage_miles} miles, over the "
-            f"{form_above} miles that can go through without one.",
-            "Check the form was submitted and approved before this is paid.",
-            key, name, [job.booking_id],
-        ))
+        if rules.deduct_first_miles > 0 and job.mileage_policy_amount is not None:
+            payable = job.mileage_payable_miles
+            should_be = job.mileage_policy_amount
+            if job.mileage_amount > should_be:
+                over = money_value(job.mileage_amount - should_be)
+                out.append(Finding(
+                    "mileage_deduction_not_applied", REVIEW,
+                    f"{name}'s mileage on {_when(job)} looks like the whole drive, not the "
+                    "part that gets paid",
+                    f"Booking {job.booking_id} paid {job.mileage_amount}, which is {trip} miles "
+                    f"at ${rate_used} a mile. Policy pays only the miles above "
+                    f"{rules.deduct_first_miles} on a round trip, so a {trip}-mile round trip "
+                    f"pays {payable} miles - ${should_be}. That is ${over} more than policy.",
+                    f"If {trip} miles was the whole round trip, correct this to ${should_be} as "
+                    "a manual adjustment. If it was already the payable figure, change "
+                    "amount_represents to 'payable_miles' in Settings.",
+                    key, name, [job.booking_id],
+                ))
+
+        form_above = rules.form_required_above_miles
+        if form_above is not None and trip > form_above:
+            out.append(Finding(
+                "mileage_needs_form", REVIEW,
+                f"{name}'s drive on {_when(job)} needed approving in advance",
+                f"Booking {job.booking_id} covers {trip} miles round trip. Anything over "
+                f"{form_above} miles has to be approved before the job, on the mileage "
+                "request form.",
+                "Check the form was submitted and approved before this is paid.",
+                key, name, [job.booking_id],
+            ))
 
     if job.mileage_amount > 0 and job.sitterwise_cut > 0 and job.mileage_amount > job.sitterwise_cut:
         out.append(Finding(
