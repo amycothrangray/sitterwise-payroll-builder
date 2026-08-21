@@ -14,6 +14,7 @@ bookings involved, and says what to do about it.
 """
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -160,12 +161,24 @@ def _check_already_paid(jobs: list[Job], previously_paid: dict[str, str]) -> lis
     return out
 
 
+def _looks_like_test_data(name: str, patterns: set[str]) -> bool:
+    """True only when a name is made up entirely of test-ish words.
+
+    Matching "test" anywhere in the text would flag a real client called
+    Testa, or a family whose booking is named "Test Family" by an admin who
+    meant something real. Requiring every word to be a test word keeps
+    "Test Test" and "Demo Demo" while leaving real names alone.
+    """
+    words = [w for w in re.split(r"[^a-z0-9]+", str(name or "").lower()) if w]
+    return bool(words) and all(word in patterns for word in words)
+
+
 def _check_test_data(jobs: list[Job], rules: Rules) -> list[Finding]:
-    patterns = [p.lower() for p in rules.v("test_client_patterns", [])]
+    patterns = {p.lower() for p in rules.v("test_client_patterns", [])}
     out = []
     for job in jobs:
-        haystack = f"{job.client_name} {job.caregiver_name}".lower()
-        if any(p and p in haystack for p in patterns):
+        if _looks_like_test_data(job.client_name, patterns) or \
+                _looks_like_test_data(job.caregiver_name, patterns):
             out.append(Finding(
                 "test_booking", STOP if job.is_payable else REVIEW,
                 f"Booking {job.booking_id} looks like test data",
@@ -481,6 +494,8 @@ def _check_overlaps(caregiver: CaregiverPayroll) -> list[Finding]:
     shifts = sorted(
         [(j.start, j.end, j.booking_id) for j in caregiver.jobs if j.start and j.end])
     for (start_a, end_a, id_a), (start_b, end_b, id_b) in zip(shifts, shifts[1:]):
+        if id_a == id_b:
+            continue          # the same booking twice - already reported as a duplicate
         if start_b < end_a:
             out.append(Finding(
                 "overlapping_shifts", STOP,
