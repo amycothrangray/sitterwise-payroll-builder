@@ -124,6 +124,12 @@ Sitterwise cut on job:  $48.00
 Left after mileage:     $6.96            <-- warn
 ```
 
+**Put the policy in front of the caregiver, at the moment they claim.** On
+Care.com jobs only, the checkout screen should say in plain words what can be
+claimed, what the limit is, and what needs a form - so nobody is guessing from
+memory. On every other job the mileage option should not appear at all, and
+saying nothing is the right thing to say.
+
 **Worth considering:** if Sitterwise holds the caregiver's home address it can
 compute home -> job -> home itself and store `computed_round_trip_miles`
 alongside what was claimed. The request then becomes "confirm 54 miles" rather
@@ -138,21 +144,32 @@ Sitterwise anything and the commission risk disappears for eligible jobs.
 
 ## Should have
 
-### 5. Split the reimbursement column
+### 5. Bring the reimbursement type into the export
 
-One untyped `Reimbursement` column currently carries mileage, parking,
-supplies and anything else. Fourteen reimbursements in August, zero
-descriptions.
+Sitterwise records what a reimbursement was for - parking, supplies, a
+booster seat - somewhere. **It is not in the export.** Fourteen reimbursements
+in August, not one description among them.
+
+This is the clearest case of something already being collected and then thrown
+away on the way out. Whatever field holds that note today, add it to the
+export.
+
+Then split the single money column so type is never inferred:
 
 ```
 mileage_amount                   derived from the approved request only
 other_reimbursement_amount
-other_reimbursement_description  required whenever the amount is above zero
+other_reimbursement_type         parking | supplies | tolls | other
+other_reimbursement_description  free text, required when the amount is above zero
 ```
 
-This matters beyond tidiness: reimbursements are **not taxable and not wages**,
-so they must be separable with certainty rather than by dividing by 0.76 and
-hoping.
+Two reasons this matters beyond tidiness:
+
+- Reimbursements are **not taxable and not wages**. They have to be separable
+  with certainty rather than by dividing by $0.76 and hoping.
+- Right now the payroll app has to flag every undescribed reimbursement for
+  review, because it cannot tell parking from a mileage claim someone should
+  not have made. With a type field, most of those flags disappear.
 
 ### 6. Tips that can be recorded before a job is marked paid
 
