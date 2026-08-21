@@ -69,6 +69,14 @@ async function loadRun() {
 async function refreshRun() { await loadRun(); await render(); }
 
 /* ---------- shell ---------- */
+/* The table headings stick just below the top bar, whose height changes when
+   the navigation wraps on a narrow window. */
+function measureTopbar() {
+  const bar = $('.topbar');
+  if (bar) document.documentElement.style.setProperty('--topbar-h', bar.offsetHeight + 'px');
+}
+window.addEventListener('resize', measureTopbar);
+
 function navBar() {
   const run = S.run && S.run.run;
   const summary = S.run && S.run.summary;
@@ -101,6 +109,7 @@ async function render() {
   if (S.view === 'history') S.home = await api('/api/state');
   navBar();
   $('#app').innerHTML = (VIEWS[S.view] || VIEWS.home)();
+  measureTopbar();
   if (VIEWS['after_' + S.view]) VIEWS['after_' + S.view]();
 }
 
@@ -243,11 +252,11 @@ VIEWS.check = () => {
       <div class="big">${summary.ready}</div>
       <div class="lbl">${summary.ready === 1 ? 'caregiver is' : 'caregivers are'} ready</div>
     </button>
-    <button class="state review" onclick="showCards('needs_review')">
+    <button class="state ${summary.needs_review ? 'review' : 'quiet'}" onclick="showCards('needs_review')">
       <div class="big">${summary.needs_review}</div>
       <div class="lbl">need a look from you</div>
     </button>
-    <button class="state blocked" onclick="showCards('blocked')">
+    <button class="state ${summary.blocked ? 'blocked' : 'quiet'}" onclick="showCards('blocked')">
       <div class="big">${summary.blocked}</div>
       <div class="lbl">can't be paid yet</div>
     </button>
@@ -576,7 +585,7 @@ VIEWS.onpay = () => {
     <a class="btn" href="/api/runs/${S.runId}/export/onpay_entry">Download this as a spreadsheet</a>
     <span class="muted" style="margin-left:auto">${entered_count} of ${totals.caregivers} done</span>
   </div>
-  <div class="tablewrap">
+  <div class="tablewrap tall">
     <table><thead><tr>
       <th></th><th>Caregiver</th>
       ${tiers.map(t => `<th class="n">${esc(t.label)}<br><span class="faint">$${num(t.rate).toFixed(2)}</span></th>`).join('')}
@@ -866,7 +875,7 @@ VIEWS.roster = () => {
     ${plural(attention.length, 'caregiver is', 'caregivers are')} not fully set up:
     ${esc(attention.map(e => e.display_name).join(', '))}.</div>` : ''}
 
-  <div class="tablewrap">
+  <div class="tablewrap tall">
     <table><thead><tr><th>Caregiver</th><th>OnPay status</th><th>Clock User</th>
       <th>Employee ID</th><th>Note</th><th></th></tr></thead><tbody>
     ${list.map(e => `<tr>

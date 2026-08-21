@@ -77,7 +77,31 @@ def run_checks(caregivers: list[CaregiverPayroll], all_jobs: list[Job],
 
     findings += _check_data_gaps(period_jobs, rules)
     findings += _check_unconfirmed_roster(caregivers, roster)
+    findings += _summarise_overtime(caregivers)
     return _sorted(findings)
+
+
+def _summarise_overtime(caregivers: list[CaregiverPayroll]) -> list[Finding]:
+    """One note for all the overtime, not one per person.
+
+    Overtime is already on every card and in the OnPay grid. Repeating it here
+    once per caregiver pushed everything that needed action off the screen.
+    """
+    with_ot = [c for c in caregivers if c.ot_hours > 0 or c.dt_hours > 0]
+    if not with_ot:
+        return []
+    hours = sum((c.ot_hours + c.dt_hours for c in with_ot), ZERO)
+    premium = sum((c.ot_premium + c.dt_premium for c in with_ot), ZERO)
+    listing = ", ".join(f"{c.name} {c.ot_hours + c.dt_hours}" for c in
+                        sorted(with_ot, key=lambda c: -(c.ot_hours + c.dt_hours))[:8])
+    return [Finding(
+        "overtime_summary", NOTE,
+        f"{len(with_ot)} caregivers worked overtime - {hours} hours, {premium} in premium pay",
+        f"Most hours first: {listing}"
+        + (" and others." if len(with_ot) > 8 else "."),
+        "Open a caregiver's card to see exactly which days caused it.",
+        booking_ids=[b for c in with_ot for b in _ot_bookings(c) + _dt_bookings(c)][:60],
+    )]
 
 
 def _check_unconfirmed_roster(caregivers: list[CaregiverPayroll],
@@ -304,15 +328,6 @@ def _check_caregiver(caregiver: CaregiverPayroll, roster: dict[str, RosterEntry]
             "Check the long day is real before paying it.",
             key, name, _dt_bookings(caregiver),
         ))
-    if caregiver.ot_hours > 0:
-        out.append(Finding(
-            "overtime", NOTE,
-            f"{name} has {caregiver.ot_hours} hours of overtime",
-            f"Worth {caregiver.ot_premium} in premium pay on top of straight time.",
-            "Open their card to see which days caused it.",
-            key, name, _ot_bookings(caregiver),
-        ))
-
     if caregiver.uses_multiple_rates and (caregiver.ot_hours > 0 or caregiver.dt_hours > 0):
         rates = ", ".join(f"${t.rate:.2f}" for t in caregiver.tiers if t.hours > 0)
         week = next((w for w in caregiver.weeks if w.ot_hours or w.dt_hours), None)

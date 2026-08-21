@@ -78,11 +78,11 @@ button { font: inherit; }
   border-bottom: 1px solid var(--border);
 }
 .topbar-inner {
-  max-width: 1120px; margin: 0 auto; padding: 12px 24px;
-  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  max-width: 1120px; margin: 0 auto; padding: 11px 24px;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
 }
 .brand {
-  font-weight: 700; letter-spacing: -.02em; font-size: 1.05rem;
+  font-weight: 700; letter-spacing: -.02em; font-size: 1rem;
   color: var(--navy); display: flex; align-items: center; gap: 9px;
   background: none; border: 0; cursor: pointer; padding: 0;
 }
@@ -90,8 +90,8 @@ button { font: inherit; }
 nav { display: flex; gap: 2px; flex-wrap: wrap; margin-left: auto; }
 nav button {
   background: none; border: 0; cursor: pointer;
-  padding: 7px 13px; border-radius: 999px;
-  color: var(--muted); font-weight: 550; font-size: .93rem;
+  padding: 6px 11px; border-radius: 999px; white-space: nowrap;
+  color: var(--muted); font-weight: 550; font-size: .88rem;
 }
 nav button:hover { background: var(--surface-2); color: var(--text); }
 nav button[aria-current="true"] { background: var(--navy); color: #fff; }
@@ -174,6 +174,7 @@ nav button .pip {
 .state.review  { background: var(--review-bg);  color: var(--review);  border-color: color-mix(in srgb, var(--review) 26%, transparent); }
 .state.blocked { background: var(--blocked-bg); color: var(--blocked); border-color: color-mix(in srgb, var(--blocked) 26%, transparent); }
 .state.entered { background: var(--entered-bg); color: var(--entered); border-color: color-mix(in srgb, var(--entered) 26%, transparent); }
+.state.quiet   { background: var(--surface-2); color: var(--faint); border-color: var(--border); }
 .state.flat    { cursor: default; }
 .state.flat:hover { transform: none; box-shadow: none; }
 
@@ -243,9 +244,16 @@ details.src[open] > summary::before { content: "▾ "; }
 
 /* ---------- tables ---------- */
 .tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-table { border-collapse: collapse; width: 100%; font-size: .93rem; }
+/* Long tables scroll inside themselves so the column headings stay put.
+   Short ones are left alone - a nested scrollbar on six rows is just annoying. */
+.tablewrap.tall { overflow: auto; max-height: calc(100vh - var(--topbar-h, 60px) - 190px); }
+table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .93rem; }
 th, td { padding: 10px 13px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
-th { background: var(--surface-2); font-weight: 620; font-size: .82rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); position: sticky; top: 0; }
+th {
+  background: var(--surface-2); font-weight: 620; font-size: .82rem;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+  position: sticky; top: 0; z-index: 5;
+}
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover td { background: var(--surface-2); }
 td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
