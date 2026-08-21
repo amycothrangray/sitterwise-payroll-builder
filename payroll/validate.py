@@ -74,7 +74,33 @@ def run_checks(caregivers: list[CaregiverPayroll], all_jobs: list[Job],
         findings += _check_caregiver(caregiver, roster, rules)
 
     findings += _check_data_gaps(period_jobs, rules)
+    findings += _check_unconfirmed_roster(caregivers, roster)
     return _sorted(findings)
+
+
+def _check_unconfirmed_roster(caregivers: list[CaregiverPayroll],
+                              roster: dict[str, RosterEntry]) -> list[Finding]:
+    """Caregivers the app added to the roster itself and nobody has confirmed.
+
+    Raised once rather than per person, because on a first run that would be
+    every single caregiver and would drown out everything that matters.
+    """
+    unconfirmed = [c for c in caregivers
+                   if (entry := roster.get(c.key)) and entry.source == "added_automatically"]
+    if not unconfirmed:
+        return []
+    owed = sum((c.total_paid for c in unconfirmed), ZERO)
+    names = sorted(c.name for c in unconfirmed if c.name)
+    return [Finding(
+        "roster_unconfirmed", REVIEW,
+        f"{len(unconfirmed)} caregivers have not had their OnPay setup confirmed",
+        f"The app added them to the roster itself when it saw them in the export, so it does "
+        f"not yet know whether they can actually be paid. Between them they are owed {owed}. "
+        + (", ".join(names[:6]) + (" and others." if len(names) > 6 else ".")),
+        "Import your employee list from OnPay on the Roster screen - that sets everyone at "
+        "once. Anyone genuinely not in OnPay can be marked so, which will then block payroll.",
+        booking_ids=[j.booking_id for c in unconfirmed for j in c.jobs][:60],
+    )]
 
 
 def _sorted(findings: list[Finding]) -> list[Finding]:
@@ -238,7 +264,7 @@ def _check_caregiver(caregiver: CaregiverPayroll, roster: dict[str, RosterEntry]
             "Set them up in OnPay, then update their status on the Roster screen.",
             key, name, [j.booking_id for j in caregiver.jobs],
         ))
-    elif entry.needs_attention:
+    elif entry.needs_attention and entry.source != "added_automatically":
         out.append(Finding(
             "onpay_incomplete", REVIEW,
             f"{name} - {entry.status_label}",

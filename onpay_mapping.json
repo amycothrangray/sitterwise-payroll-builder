@@ -1,0 +1,31 @@
+{
+  "_comment": "How the OnPay import file is laid out. OnPay does not publish its column format, and CSV import has to be switched on for your account by OnPay support. Ask them for the exact column names, then change the 'header' values below to match. Nothing else in the app needs to change.",
+  "_how_to_use": "OnPay matches each row to an employee by their Clock User, which you set on the employee's profile under Job. Set each caregiver's Clock User to the same thing you put in their roster entry here.",
+  "_available_values": [
+    "name", "first_name", "last_name", "onpay_clock_user", "onpay_employee_id",
+    "hours_standard", "hours_three_to_four", "pay_standard", "pay_three_to_four",
+    "guarantee_hours", "guarantee_pay", "ot_hours", "ot_premium",
+    "dt_hours", "dt_premium", "premium_pay",
+    "tips", "bonus", "mileage_miles", "mileage_amount", "other_reimbursement",
+    "reimbursement_total", "taxable_earnings", "total_paid",
+    "period_start", "period_end", "blank"
+  ],
+  "filename": "onpay-import",
+  "identifier_note": "Rows with no Clock User are left out and listed on screen.",
+  "skip_rows_without_identifier": true,
+  "columns": [
+    { "header": "Clock User",        "value": "onpay_clock_user" },
+    { "header": "Employee",          "value": "name" },
+    { "header": "Regular Hours",     "value": "hours_standard" },
+    { "header": "3-4 Child Hours",   "value": "hours_three_to_four" },
+    { "header": "Minimum Hours",     "value": "guarantee_hours" },
+    { "header": "Overtime Hours",    "value": "ot_hours" },
+    { "header": "Overtime Premium",  "value": "ot_premium" },
+    { "header": "Double Time Hours", "value": "dt_hours" },
+    { "header": "Double Time Premium", "value": "dt_premium" },
+    { "header": "Tips",              "value": "tips" },
+    { "header": "Bonus",             "value": "bonus" },
+    { "header": "Mileage",           "value": "mileage_amount" },
+    { "header": "Reimbursement",     "value": "other_reimbursement" }
+  ]
+}
