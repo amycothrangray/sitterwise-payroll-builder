@@ -196,6 +196,7 @@ def build_run(path, rules: Rules, period_start: date, period_end: date,
         caregivers, result.jobs, payable, roster, rules,
         previously_paid=previously_paid,
         period_start=period_start, period_end=period_end,
+        period_all_jobs=in_period,
     )
 
     reconciliation = _reconcile(result, in_period, payable, excluded, caregivers)

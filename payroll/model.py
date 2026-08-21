@@ -30,6 +30,7 @@ class Job:
     hours_exported: Decimal | None          # Sitterwise's 'Total Hours'
     paid_to_caregiver: Decimal
     charge_to_client: Decimal
+    sitterwise_cut: Decimal
     tip: Decimal
     tip_was_blank: bool
     reimbursement: Decimal
@@ -53,6 +54,7 @@ class Job:
     mileage_rate: Decimal | None = None
     mileage_amount: Decimal = Decimal("0")
     other_reimbursement: Decimal = Decimal("0")
+    mileage_rejected_reason: str = ""   # service_type | under_minimum
 
     # --- bookkeeping ---------------------------------------------------
     is_payable: bool = False

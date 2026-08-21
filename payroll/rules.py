@@ -219,6 +219,15 @@ class Rules:
     def minimum_miles(self) -> Decimal:
         return Decimal(str(self._mileage.get("minimum_miles", 1)))
 
+    @property
+    def mileage_eligible_service_types(self) -> set[str]:
+        """Job types mileage may be claimed on. Empty means any job."""
+        return set(self._mileage.get("eligible_service_types", []))
+
+    def mileage_allowed_on(self, service_type: str) -> bool:
+        eligible = self.mileage_eligible_service_types
+        return not eligible or service_type in eligible
+
     def mileage_rate_for(self, on: date) -> Decimal:
         """The mileage rate in force on a given date.
 

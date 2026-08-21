@@ -59,13 +59,14 @@ def run_checks(caregivers: list[CaregiverPayroll], all_jobs: list[Job],
                period_jobs: list[Job], roster: dict[str, RosterEntry],
                rules: Rules, previously_paid: dict[str, str] | None = None,
                period_start: date | None = None,
-               period_end: date | None = None) -> list[Finding]:
+               period_end: date | None = None,
+               period_all_jobs: list[Job] | None = None) -> list[Finding]:
     previously_paid = previously_paid or {}
     findings: list[Finding] = []
 
     findings += _check_duplicates(period_jobs)
     findings += _check_already_paid(period_jobs, previously_paid)
-    findings += _check_test_data(period_jobs, rules)
+    findings += _check_test_data(period_all_jobs or period_jobs, rules)
     findings += _check_unknown_service_types(period_jobs, rules)
     findings += _check_unclosed_jobs(all_jobs, period_start, period_end, rules)
     findings += _check_settings(rules)
@@ -166,11 +167,13 @@ def _check_test_data(jobs: list[Job], rules: Rules) -> list[Finding]:
         haystack = f"{job.client_name} {job.caregiver_name}".lower()
         if any(p and p in haystack for p in patterns):
             out.append(Finding(
-                "test_booking", STOP,
+                "test_booking", STOP if job.is_payable else REVIEW,
                 f"Booking {job.booking_id} looks like test data",
                 f"The client on this booking is \"{job.client_name}\", which looks like a "
-                f"test record rather than a real job. It has {job.paid_to_caregiver} of pay on it.",
-                "Delete it in Sitterwise, or confirm it is real before including it.",
+                f"test record rather than a real job. It has {job.paid_to_caregiver} of pay on it"
+                + (" and is being paid." if job.is_payable
+                   else f", but is not being paid because its status is {job.status}."),
+                "Delete it in Sitterwise so it stops turning up in exports.",
                 job.caregiver_key, job.display_name, [job.booking_id],
             ))
     return out
@@ -421,6 +424,42 @@ def _check_job(job: Job, caregiver: CaregiverPayroll, rules: Rules) -> list[Find
             f"{name} has a {job.tip} tip",
             f"Booking {job.booking_id} on {_when(job)} carries an unusually large tip.",
             "Just worth a second look before it goes through.",
+            key, name, [job.booking_id],
+        ))
+
+    if job.mileage_rejected_reason == "service_type":
+        eligible = " or ".join(sorted(rules.mileage_eligible_service_types)) or "any"
+        out.append(Finding(
+            "mileage_not_allowed", REVIEW,
+            f"{name} may have claimed mileage on a job that does not qualify",
+            f"Booking {job.booking_id} on {_when(job)} is a {job.service_type} job with a "
+            f"{job.other_reimbursement} reimbursement that is an exact number of miles at the "
+            f"current rate. Mileage is only paid on {eligible} jobs, so the app has NOT paid this "
+            "as mileage - it is sitting in other reimbursements instead.",
+            "Check what it was really for. If somebody claimed mileage on a job outside the "
+            "Care.com programme, take it off before payroll goes through.",
+            key, name, [job.booking_id],
+        ))
+
+    if job.mileage_rejected_reason == "under_minimum":
+        out.append(Finding(
+            "mileage_under_minimum", REVIEW,
+            f"{name}'s mileage claim on {_when(job)} is under the {rules.minimum_miles}-mile minimum",
+            f"Booking {job.booking_id} has a {job.other_reimbursement} reimbursement, which is a "
+            f"trip shorter than the {rules.minimum_miles} miles a mileage claim needs. The app has "
+            "not paid it as mileage.",
+            "Check whether this should have been claimed at all.",
+            key, name, [job.booking_id],
+        ))
+
+    if job.mileage_amount > 0 and job.sitterwise_cut > 0 and job.mileage_amount > job.sitterwise_cut:
+        out.append(Finding(
+            "mileage_exceeds_commission", REVIEW,
+            f"{name}'s mileage on {_when(job)} is more than Sitterwise earned on the job",
+            f"Booking {job.booking_id} pays {job.mileage_amount} of mileage "
+            f"({job.mileage_miles} miles) but Sitterwise's cut on it is only {job.sitterwise_cut}. "
+            "That job loses money.",
+            "Worth checking the trip really was that far, and that the job qualified for mileage.",
             key, name, [job.booking_id],
         ))
 

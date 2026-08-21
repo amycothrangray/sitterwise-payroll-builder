@@ -200,6 +200,7 @@ def _build_job(row_number, cell, rules: Rules, today: date) -> Job:
         hours_exported=None if is_blank(raw_total_hours) else to_hours(raw_total_hours),
         paid_to_caregiver=money(cell("paid_to_caregiver")),
         charge_to_client=money(cell("charge_to_client")),
+        sitterwise_cut=money(cell("sitterwise_cut")),
         tip=money(raw_tip),
         tip_was_blank=is_blank(raw_tip),
         reimbursement=money(raw_reimb),
@@ -377,10 +378,12 @@ def _split_reimbursement(job: Job, cell, rules: Rules) -> None:
         return
 
     rate_used = rules.mileage_rate_for(job.workday or date.today())
+    eligible = rules.mileage_allowed_on(job.service_type)
     if rate_used > 0:
         miles = job.reimbursement / rate_used
         nearest = miles.quantize(Decimal("1"))
-        if abs(miles - nearest) <= rules.whole_mile_tolerance and nearest >= rules.minimum_miles:
+        looks_like_mileage = abs(miles - nearest) <= rules.whole_mile_tolerance
+        if looks_like_mileage and nearest >= rules.minimum_miles and eligible:
             job.mileage_miles = nearest
             job.mileage_rate = rate_used
             job.mileage_amount = job.reimbursement
@@ -388,6 +391,24 @@ def _split_reimbursement(job: Job, cell, rules: Rules) -> None:
                 f"Treated as mileage: ${job.reimbursement} is exactly {nearest} miles at "
                 f"${rate_used} a mile. Sitterwise has no mileage field, so the app worked "
                 "this out from the amount."
+            )
+            return
+        if looks_like_mileage and not eligible:
+            job.other_reimbursement = job.reimbursement
+            job.mileage_rejected_reason = "service_type"
+            job.import_notes.append(
+                f"${job.reimbursement} is exactly {nearest} miles at ${rate_used} a mile, but "
+                f"this is a {job.service_type} job and mileage is only paid on "
+                f"{' or '.join(sorted(rules.mileage_eligible_service_types))} jobs. NOT treated "
+                "as mileage."
+            )
+            return
+        if looks_like_mileage and nearest < rules.minimum_miles:
+            job.other_reimbursement = job.reimbursement
+            job.mileage_rejected_reason = "under_minimum"
+            job.import_notes.append(
+                f"${job.reimbursement} works out to {nearest} miles, under the "
+                f"{rules.minimum_miles}-mile minimum for a mileage claim. NOT treated as mileage."
             )
             return
 
