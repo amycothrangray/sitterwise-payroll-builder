@@ -25,7 +25,8 @@ from .importer import import_export
 from .roster import (NOT_IN_ONPAY, READY, RosterEntry, STATUS_LABELS,
                      normalise_name, parse_onpay_employee_export)
 from .rules import DEFAULT_RULES_PATH, Rules, RulesError
-from .run import build_run, half_month_periods, period_label, suggest_period
+from .run import (build_run, half_month_periods, period_label, suggest_period,
+                  weeks_in)
 from .store import DATA_DIR, Store
 
 APP_ROOT = Path(__file__).resolve().parent.parent
@@ -419,18 +420,26 @@ class Handler(BaseHTTPRequestHandler):
         target = self._save_upload()
         rules = Rules.load()
         result = _cached_import(target, rules)
-        start, end, note = suggest_period(result)
+        start, end, note = suggest_period(result, rules)
         payable = [j for j in result.jobs if j.is_payable]
         caregivers = {j.caregiver_key for j in payable if j.caregiver_key}
-        months = sorted({(j.workday.year, j.workday.month)
-                         for j in result.jobs if j.workday})
         choices = []
-        for year, month in months:
-            for lo, hi, label in half_month_periods(year, month):
-                count = sum(1 for j in payable if j.workday and lo <= j.workday <= hi)
-                if count:
-                    choices.append({"start": lo.isoformat(), "end": hi.isoformat(),
-                                    "label": label, "jobs": count})
+        week_start = rules.workweek_start_index
+        for lo, hi in weeks_in(result, 0 if week_start is None else week_start):
+            count = sum(1 for j in payable if j.workday and lo <= j.workday <= hi)
+            if count:
+                choices.append({"start": lo.isoformat(), "end": hi.isoformat(),
+                                "label": period_label(lo, hi), "jobs": count,
+                                "kind": "week"})
+        if rules.offer_half_months:
+            months = sorted({(j.workday.year, j.workday.month)
+                             for j in result.jobs if j.workday})
+            for year, month in months:
+                for lo, hi, label in half_month_periods(year, month):
+                    count = sum(1 for j in payable if j.workday and lo <= j.workday <= hi)
+                    if count:
+                        choices.append({"start": lo.isoformat(), "end": hi.isoformat(),
+                                        "label": label, "jobs": count, "kind": "half_month"})
         self.store.log("export_uploaded",
                        f"{target.name}: {len(result.jobs)} bookings, "
                        f"{len(caregivers)} caregivers")

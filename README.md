@@ -5,6 +5,9 @@ into OnPay, with the arithmetic shown for every figure.
 
 Runs on your own computer. No accounts, no cloud, nothing leaves the machine.
 
+Sitterwise payroll runs **weekly, Monday through Sunday**. Pay stubs go out by
+email through OnPay on Tuesday, and direct deposit lands on Friday.
+
 ---
 
 ## Running it
@@ -24,9 +27,11 @@ python3 run.py
 
 ## How a payroll goes
 
-**1. Upload** the export from Sitterwise. The app reads it and asks which pay
-period you mean — your export is a whole month, so it can't know. It suggests
-one and shows how many jobs fall in each half.
+**1. Upload** the export from Sitterwise. Your export is a whole month, so the
+app asks which pay week you mean. Sitterwise pays **weekly, Monday to Sunday**,
+so it lists those weeks with the number of jobs in each and pre-selects the
+most recent complete one. Half-months are offered underneath in case you ever
+need to run one.
 
 **2. Payroll check.** Three numbers, in plain English:
 
@@ -68,7 +73,8 @@ later run unless you deliberately unlock it.
   don't trigger overtime.
 - **California overtime** — time and a half over 8 hours a day, double time
   over 12, seventh-consecutive-day rules. Weekly overtime is off but still
-  warned about.
+  warned about; across all four real August pay weeks it would have added
+  nothing, because daily overtime already covers everyone who passed 40 hours.
 - **Two rates in one week** — overtime uses the weighted average, with the
   sum shown on the card.
 - **Tips** — kept out of wages and out of the overtime rate. Their own OnPay
@@ -137,7 +143,7 @@ their support for both, then set the column names in Settings.
 python3 -m unittest discover -s tests -t .
 ```
 
-62 tests. To run the regression tests against a real export, drop one in
+71 tests. To run the regression tests against a real export, drop one in
 `tests/fixtures/real/` — that folder is kept out of git because real exports
 contain client names and phone numbers.
 

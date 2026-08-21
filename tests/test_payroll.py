@@ -226,8 +226,8 @@ class TestOvertime(PayrollCase):
         self.assertIn("double_time", self.codes("Priya Raman"))
 
     def test_seventh_consecutive_day(self):
-        # Ruth Ozeki worked Aug 2 to Aug 8, 4 hrs a day = 28 hrs x $23 = $644.00
-        #   Aug 8 is her seventh day in a row, so all 4 of its hours are at 1.5x
+        # Ruth Ozeki worked Mon Aug 3 to Sun Aug 9, 4 hrs a day = 28 hrs x $23 = $644.00
+        #   Aug 9 is her seventh day in a row, so all 4 of its hours are at 1.5x
         #   premium: 4 x 0.5 x $23 = $46.00
         #   total:   $690.00
         ruth = self.person("Ruth Ozeki")
@@ -237,10 +237,11 @@ class TestOvertime(PayrollCase):
         self.assertEqual(ruth.ot_premium, money("46.00"))
         self.assertEqual(ruth.total_paid, money("690.00"))
         seventh = [d for w in ruth.weeks for d in w.days if d.is_seventh_consecutive_day]
-        self.assertEqual([d.day for d in seventh], [date(2026, 8, 8)])
+        self.assertEqual([d.day for d in seventh], [date(2026, 8, 9)])
 
     def test_weekly_threshold_is_warned_about_even_when_it_is_switched_off(self):
-        # Cass Moreau: 6 days x 7 hrs = 42 hrs, never over 8 in a day.
+        # Cass Moreau: Mon Aug 3 to Sat Aug 8, 7 hrs a day = 42 hrs in one pay
+        # week, never over 8 in a day.
         # Weekly overtime is off, so no premium - but the app must say so.
         cass = self.person("Cass Moreau")
         self.assertEqual(cass.hours_worked, money("42.00"))
@@ -259,10 +260,22 @@ class TestOvertime(PayrollCase):
         self.assertIn("bonus_with_overtime", self.codes("Lena Voss"))
 
     def test_workweek_boundary(self):
-        # With the week starting on Sunday, Aug 3 (a Monday) belongs to the
-        # week beginning Sunday Aug 2.
-        self.assertEqual(week_start_for(date(2026, 8, 3), 6), date(2026, 8, 2))
-        self.assertEqual(week_start_for(date(2026, 8, 9), 6), date(2026, 8, 9))
+        # Sitterwise pays Monday to Sunday, so Aug 3 (a Monday) starts its own
+        # week and Aug 9 (the Sunday) is the last day of it.
+        self.assertEqual(week_start_for(date(2026, 8, 3), 0), date(2026, 8, 3))
+        self.assertEqual(week_start_for(date(2026, 8, 9), 0), date(2026, 8, 3))
+        self.assertEqual(week_start_for(date(2026, 8, 10), 0), date(2026, 8, 10))
+        self.assertEqual(self.rules.workweek_start_index, 0)
+
+    def test_a_monday_workweek_is_not_treated_as_no_setting(self):
+        # Monday is index 0, which is falsy. Code that fell back with `or`
+        # silently rebuilt every week as a Sunday week regardless of the
+        # setting, which quietly broke weekly overtime and the seventh-day
+        # rule. Ruth's seven days must land in one week, not split across two.
+        ruth = self.person("Ruth Ozeki")
+        self.assertEqual(len(ruth.weeks), 1)
+        self.assertEqual(ruth.weeks[0].week_start, date(2026, 8, 3))
+        self.assertEqual(ruth.weeks[0].week_end, date(2026, 8, 9))
 
 
 class TestPersonalAttendantRules(PayrollCase):

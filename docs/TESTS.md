@@ -17,6 +17,9 @@ four-hour booking minimum, overtime after 8 hours a day, double time after 12,
 seventh-consecutive-day rules on, weekly overtime off, and mileage on Care.com
 jobs of 40 miles or more at the IRS rate for the date of the job.
 
+Sitterwise pays weekly, Monday to Sunday. The test payroll below deliberately
+spans two of those weeks so the weekly grouping gets exercised.
+
 ---
 
 ## The payroll as a whole
@@ -123,7 +126,7 @@ Reconciliation: 45 jobs dated in this period, 43 paid, 43 accounted for. 1 left 
 
 **The overtime:**
 
-Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an hour.
+Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an hour.
 
 - **2026-08-03** - 10.00 hours. The first 8.00 are normal, the next 2.00 are overtime.
 - Overtime premium: 2.00 x 0.5 x $23.0000 = **$23.00**
@@ -137,10 +140,6 @@ Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an 
 | Overtime premium: 2.00 hrs | $23.00 |
 | **Taxable earnings** | **$345.00** |
 | **Total being paid** | **$345.00** |
-
-**What the payroll check says:**
-
-- **Note** - Dana Reyes has 2.00 hours of overtime. Worth 23.00 in premium pay on top of straight time.
 
 ---
 
@@ -157,7 +156,7 @@ Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an 
 
 **The overtime:**
 
-Week beginning 2026-08-02. Two rates this week, so overtime uses the weighted average: $255.00 of straight-time pay divided by 10.00 hours worked = $25.5000 an hour.
+Week beginning 2026-08-03. Two rates this week, so overtime uses the weighted average: $255.00 of straight-time pay divided by 10.00 hours worked = $25.5000 an hour.
 
 - **2026-08-04** - 10.00 hours. The first 8.00 are normal, the next 2.00 are overtime.
 - Overtime premium: 2.00 x 0.5 x $25.5000 = **$25.50**
@@ -176,7 +175,6 @@ Week beginning 2026-08-02. Two rates this week, so overtime uses the weighted av
 **What the payroll check says:**
 
 - **Needs a look** - Tess Okafor has overtime across two different rates. Tess Okafor worked at $28.00, $23.00 this period, so their overtime is based on a blended rate of $25.5000 an hour, not on either rate on its own. OnPay will not work this out correctly on its own.
-- **Note** - Tess Okafor has 2.00 hours of overtime. Worth 25.50 in premium pay on top of straight time.
 
 ---
 
@@ -192,7 +190,7 @@ Week beginning 2026-08-02. Two rates this week, so overtime uses the weighted av
 
 **The overtime:**
 
-Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an hour.
+Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an hour.
 
 - **2026-08-05** - 13.00 hours. The first 8.00 are normal, 4.00 are overtime, and 1.00 past 12.00 hours are double time.
 - Overtime premium: 4.00 x 0.5 x $23.0000 = **$46.00**
@@ -213,7 +211,6 @@ Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an 
 
 - **Needs a look** - Priya Raman worked double time. 1.00 hours past 12.00 in a day, which is paid at double time. That is 23.00 on top of normal pay.
 - **Needs a look** - Priya Raman has a 13.00-hour shift. Booking 90012 on Aug 5 runs from 7:00 AM to 8:00 PM. That is unusually long.
-- **Note** - Priya Raman has 4.00 hours of overtime. Worth 46.00 in premium pay on top of straight time.
 
 ---
 
@@ -225,19 +222,19 @@ Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an 
 
 | Date | Booking | Hours | Rate | Straight pay | |
 |---|---|---:|---:|---:|---|
-| 2026-08-02 | 90028 | 4.00 | $23.00 | $92.00 |  |
-| 2026-08-03 | 90029 | 4.00 | $23.00 | $92.00 |  |
-| 2026-08-04 | 90030 | 4.00 | $23.00 | $92.00 |  |
-| 2026-08-05 | 90031 | 4.00 | $23.00 | $92.00 |  |
-| 2026-08-06 | 90032 | 4.00 | $23.00 | $92.00 |  |
-| 2026-08-07 | 90033 | 4.00 | $23.00 | $92.00 |  |
-| 2026-08-08 | 90034 | 4.00 | $23.00 | $92.00 |  |
+| 2026-08-03 | 90028 | 4.00 | $23.00 | $92.00 |  |
+| 2026-08-04 | 90029 | 4.00 | $23.00 | $92.00 |  |
+| 2026-08-05 | 90030 | 4.00 | $23.00 | $92.00 |  |
+| 2026-08-06 | 90031 | 4.00 | $23.00 | $92.00 |  |
+| 2026-08-07 | 90032 | 4.00 | $23.00 | $92.00 |  |
+| 2026-08-08 | 90033 | 4.00 | $23.00 | $92.00 |  |
+| 2026-08-09 | 90034 | 4.00 | $23.00 | $92.00 |  |
 
 **The overtime:**
 
-Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an hour.
+Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an hour.
 
-- **2026-08-08** - Seventh day in a row worked. The first 4.00 hours are at time and a half.
+- **2026-08-09** - Seventh day in a row worked. The first 4.00 hours are at time and a half.
 - Overtime premium: 4.00 x 0.5 x $23.0000 = **$46.00**
 
 
@@ -250,10 +247,6 @@ Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an 
 | **Taxable earnings** | **$690.00** |
 | **Total being paid** | **$690.00** |
 
-**What the payroll check says:**
-
-- **Note** - Ruth Ozeki has 4.00 hours of overtime. Worth 46.00 in premium pay on top of straight time.
-
 ---
 
 ## Cass Moreau
@@ -264,12 +257,12 @@ Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an 
 
 | Date | Booking | Hours | Rate | Straight pay | |
 |---|---|---:|---:|---:|---|
-| 2026-08-02 | 90035 | 7.00 | $23.00 | $161.00 |  |
-| 2026-08-03 | 90036 | 7.00 | $23.00 | $161.00 |  |
-| 2026-08-04 | 90037 | 7.00 | $23.00 | $161.00 |  |
-| 2026-08-05 | 90038 | 7.00 | $23.00 | $161.00 |  |
-| 2026-08-06 | 90039 | 7.00 | $23.00 | $161.00 |  |
-| 2026-08-07 | 90040 | 7.00 | $23.00 | $161.00 |  |
+| 2026-08-03 | 90035 | 7.00 | $23.00 | $161.00 |  |
+| 2026-08-04 | 90036 | 7.00 | $23.00 | $161.00 |  |
+| 2026-08-05 | 90037 | 7.00 | $23.00 | $161.00 |  |
+| 2026-08-06 | 90038 | 7.00 | $23.00 | $161.00 |  |
+| 2026-08-07 | 90039 | 7.00 | $23.00 | $161.00 |  |
+| 2026-08-08 | 90040 | 7.00 | $23.00 | $161.00 |  |
 
 **What they are paid:**
 
@@ -297,7 +290,7 @@ Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an 
 
 **The overtime:**
 
-Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an hour.
+Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an hour.
 
 - **2026-08-03** - 9.00 hours. The first 8.00 are normal, the next 1.00 are overtime.
 - Overtime premium: 1.00 x 0.5 x $23.0000 = **$11.50**
@@ -316,7 +309,6 @@ Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an 
 **What the payroll check says:**
 
 - **Needs a look** - Lena Voss has both a bonus and overtime. Lena Voss received 15.00 in bonuses and worked overtime in the same period. If those bonuses are earned rather than a gift, California generally requires them to raise the overtime rate. The app has not done that.
-- **Note** - Lena Voss has 1.00 hours of overtime. Worth 11.50 in premium pay on top of straight time.
 
 ---
 
@@ -514,7 +506,7 @@ Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an 
 
 **The overtime:**
 
-Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an hour.
+Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an hour.
 
 - **2026-08-04** - 10.00 hours. The first 8.00 are normal, the next 2.00 are overtime.
 - Overtime premium: 2.00 x 0.5 x $23.0000 = **$23.00**
@@ -533,7 +525,6 @@ Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an 
 
 - **CANNOT BE PAID** - Booking 95001 appears 2 times. The same booking shows up 2 times in this export, which would pay Cleo Barnes more than once for one job.
 - **CANNOT BE PAID** - Cleo Barnes has the same shift booked twice. Bookings 95001 and 95001 are all on Aug 4 at 9:00 AM for the same person.
-- **Note** - Cleo Barnes has 2.00 hours of overtime. Worth 23.00 in premium pay on top of straight time.
 
 ---
 
@@ -550,7 +541,7 @@ Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an 
 
 **The overtime:**
 
-Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an hour.
+Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an hour.
 
 - **2026-08-05** - 9.00 hours. The first 8.00 are normal, the next 1.00 are overtime.
 - Overtime premium: 1.00 x 0.5 x $23.0000 = **$11.50**
@@ -568,7 +559,6 @@ Week beginning 2026-08-02. One rate this week, so the regular rate is $23.00 an 
 **What the payroll check says:**
 
 - **CANNOT BE PAID** - Ada Whitlow is booked in two places at once. Booking 90022 runs Aug 5 9:00 AM to 2:00 PM, and booking 90023 starts at 12:00 PM before that one ends. One person cannot work both, so these hours are being counted twice.
-- **Note** - Ada Whitlow has 1.00 hours of overtime. Worth 11.50 in premium pay on top of straight time.
 
 ---
 
@@ -689,22 +679,32 @@ reimbursements. There are tests for that too.
 
 ## On the real August export
 
-Seven further tests run against a real Sitterwise export when one is available
+Ten further tests run against a real Sitterwise export when one is available
 (put it in `tests/fixtures/real/`, which git ignores, or point
 `SITTERWISE_EXPORT` at it). They check that all 324 rows read without error,
 that every paid job matches a known rate, that the payroll balances, that the
 four-hour minimum is recognised, that mileage only ever lands on Care.com jobs
-of 40 miles or more, and that these totals for Aug 1-15 have not moved:
+of 40 miles or more, that the pay week really does run Monday to Sunday, that
+the app suggests the right week, that weekly overtime would add nothing, and
+that these totals for the real pay week of **Mon 10 - Sun 16 August** have not
+moved:
 
 | | |
 |---|---:|
-| Hours worked | 977.50 |
-| Straight-time wages | $23,418.75 |
-| Four-hour minimum top-ups | $83.50 |
-| Overtime | 51.25 hrs, $618.41 premium |
-| Double time | 1.25 hrs, $28.75 premium |
-| Tips | $635.00 |
-| **Total being paid** | **$25,326.05** |
+| Caregivers | 29 |
+| Jobs | 59 |
+| Hours worked | 320.75 |
+| Regular: 283.75 hrs at $23 | $6,526.25 |
+| 3-4 children: 37.00 hrs at $28 | $1,036.00 |
+| Four-hour minimum top-up | $23.00 |
+| Overtime | 14.75 hrs, $182.06 premium |
+| Tips | $145.00 |
+| Bonuses | $60.00 |
+| Mileage: 108 miles | $82.08 |
+| Other reimbursements | $114.00 |
+| **Taxable earnings** | **$7,972.31** |
+| **Reimbursements** | **$196.08** |
+| **Total being paid** | **$8,168.39** |
 
 If a change moves one of those numbers, that should be a decision somebody
 made - not a surprise.

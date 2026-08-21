@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from payroll.importer import import_export           # noqa: E402
 from payroll.roster import READY, RosterEntry        # noqa: E402
 from payroll.rules import Rules                      # noqa: E402
-from payroll.run import build_run                    # noqa: E402
+from payroll.run import build_run, suggest_period     # noqa: E402
 
 REAL_DIR = Path(__file__).parent / "fixtures" / "real"
 
@@ -53,8 +53,9 @@ class TestRealExport(unittest.TestCase):
             j.caregiver_key: RosterEntry(j.caregiver_key, j.display_name, READY,
                                          source="onpay_import")
             for j in cls.result.jobs if j.caregiver_key}
-        cls.payroll = build_run(EXPORT, cls.rules, date(2026, 8, 1), date(2026, 8, 15),
-                            roster=cls.roster, import_result=cls.result)
+        # A real Sitterwise pay week: Monday 10 August to Sunday 16 August 2026.
+        cls.payroll = build_run(EXPORT, cls.rules, date(2026, 8, 10), date(2026, 8, 16),
+                                roster=cls.roster, import_result=cls.result)
 
     def test_every_row_reads_without_error(self):
         self.assertEqual(self.result.parse_errors, [])
@@ -77,24 +78,54 @@ class TestRealExport(unittest.TestCase):
             self.assertTrue(difference["why"],
                             f"booking {difference['booking_id']} differs with no explanation")
 
+    def test_the_pay_week_runs_monday_to_sunday(self):
+        # Sitterwise pays weekly, Monday to Sunday. Every job in the run must
+        # fall inside one such week, and every caregiver must have exactly one
+        # workweek in it - if the week boundary were wrong they would split.
+        self.assertEqual(self.payroll.period_start.strftime("%A"), "Monday")
+        self.assertEqual(self.payroll.period_end.strftime("%A"), "Sunday")
+        for caregiver in self.payroll.caregivers:
+            self.assertEqual(len(caregiver.weeks), 1, caregiver.name)
+            self.assertEqual(caregiver.weeks[0].week_start, date(2026, 8, 10))
+
+    def test_the_app_suggests_the_right_pay_week(self):
+        # Standing on Friday 21 August, the most recent complete pay week is
+        # 10 to 16 August - which is the run the payroll FAQ says went out.
+        start, end, _ = suggest_period(self.result, self.rules, today=date(2026, 8, 21))
+        self.assertEqual((start, end), (date(2026, 8, 10), date(2026, 8, 16)))
+
+    def test_weekly_overtime_would_add_nothing(self):
+        # Daily overtime already covers everyone who passed 40 hours in a
+        # week, so leaving weekly overtime switched off costs nobody anything.
+        crossed = [(c.name, w.hours_worked) for c in self.payroll.caregivers
+                   for w in c.weeks if w.crossed_disabled_weekly_threshold]
+        self.assertEqual(crossed, [])
+
     def test_the_totals_have_not_moved(self):
-        # Checked by hand against the August 2026 export, Aug 1-15:
-        #   790.25 hrs at $23 = $18,175.75
-        #   187.25 hrs at $28 =  $5,243.00
-        #   3.25 guarantee hrs =    $83.50
-        #   51.25 overtime hrs =   $618.41 premium
-        #    1.25 double-time  =    $28.75 premium
+        # Checked by hand against the August 2026 export, Mon 10 - Sun 16 Aug:
+        #   283.75 hrs at $23 = $6,526.25
+        #    37.00 hrs at $28 = $1,036.00
+        #     1.00 guarantee hr =   $23.00
+        #    14.75 overtime hrs =  $182.06 premium
+        #   tips $145.00, bonuses $60.00
+        #   108 miles = $82.08, other reimbursements $114.00
         totals = self.payroll.totals()
         expected = {
-            "hours_worked": "977.50",
-            "straight_pay": "23418.75",
-            "guarantee_pay": "83.50",
-            "ot_hours": "51.25",
-            "ot_premium": "618.41",
-            "dt_hours": "1.25",
-            "dt_premium": "28.75",
-            "tips": "635.00",
-            "total_paid": "25326.05",
+            "hours_worked": "320.75",
+            "straight_pay": "7562.25",
+            "guarantee_hours": "1.00",
+            "guarantee_pay": "23.00",
+            "ot_hours": "14.75",
+            "ot_premium": "182.06",
+            "dt_hours": "0.00",
+            "tips": "145.00",
+            "bonus": "60.00",
+            "mileage_miles": "108",
+            "mileage_amount": "82.08",
+            "other_reimbursement": "114.00",
+            "taxable_earnings": "7972.31",
+            "reimbursements": "196.08",
+            "total_paid": "8168.39",
         }
         for key, value in expected.items():
             self.assertEqual(Decimal(totals[key]), Decimal(value), key)

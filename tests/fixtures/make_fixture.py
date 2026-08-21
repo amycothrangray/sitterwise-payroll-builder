@@ -148,12 +148,12 @@ def build_rows() -> list[dict]:
     # -- someone whose figures get corrected by hand -----------------------
     add(booking("Vera Lund", d(6), "16:00", 5, 23, booking_id=95500))
 
-    # -- seven days in a row ------------------------------------------------
-    for day in range(2, 9):
+    # -- seven days in a row, inside one Monday-to-Sunday pay week ----------
+    for day in range(3, 10):          # Mon Aug 3 to Sun Aug 9
         add(booking("Ruth Ozeki", d(day), "09:00", 4, 23))
 
     # -- over 40 hours in a week, but never over 8 in a day ----------------
-    for day in range(2, 8):
+    for day in range(3, 9):           # Mon Aug 3 to Sat Aug 8
         add(booking("Cass Moreau", d(day), "09:00", 7, 23))
 
     # -- a bonus alongside overtime ----------------------------------------
@@ -161,7 +161,7 @@ def build_rows() -> list[dict]:
 
     # -- things that must never be paid -------------------------------------
     add(booking("Rosa Delgado", d(9), "09:00", 5, 23, status="cancelled"))
-    add(booking("Rosa Delgado", d(2), "09:00", 5, 23, status="confirmed"))
+    add(booking("Rosa Delgado", d(4), "09:00", 5, 23, status="confirmed"))
     add(booking("", d(4), "09:00", 5, 23, client="Nobody Assigned"))
     add(booking("Zed Tester", d(6), "09:00", 4, 23, client="Test Test"))
 

@@ -346,7 +346,11 @@ def calculate_caregiver(name: str, key: str, jobs: list[Job], rules: Rules,
 
 
 def _calculate_weeks(jobs: list[Job], rules: Rules) -> list[WeekResult]:
-    start_index = rules.workweek_start_index or 6
+    # Not `or 6`: Monday is index 0, which is falsy, so that silently
+    # rebuilt every week as a Sunday week no matter what the setting said.
+    start_index = rules.workweek_start_index
+    if start_index is None:
+        start_index = 0
     by_week: dict[date, list[Job]] = {}
     for job in jobs:
         if not job.workday or job.hours_worked <= 0:

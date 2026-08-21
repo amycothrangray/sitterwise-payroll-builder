@@ -24,28 +24,54 @@ ZERO = Decimal("0")
 
 # --- working out the pay period --------------------------------------------
 
-def suggest_period(result: ImportResult) -> tuple[date, date, str]:
-    """Guess the pay period from the dates in the file, and say how sure we are.
+def suggest_period(result: ImportResult, rules: Rules | None = None,
+                   today: date | None = None) -> tuple[date, date, str]:
+    """Work out which pay period this export is probably for.
 
-    The export is a whole calendar month, so this is genuinely a guess. The
-    app always shows it back to Amy for confirmation rather than assuming.
+    Sitterwise pays weekly, Monday to Sunday, so the app suggests the most
+    recent complete week that actually has jobs in it. It always shows the
+    suggestion back for confirmation - an export is a whole calendar month and
+    cannot say which week you mean.
     """
     if not result.min_date or not result.max_date:
-        today = date.today()
-        return today, today, "This file has no dates the app could read."
+        stamp = today or date.today()
+        return stamp, stamp, "This file has no dates the app could read."
 
     lo, hi = result.min_date, result.max_date
-    span = (hi - lo).days
+    start_index = (rules.workweek_start_index if rules else None)
+    if start_index is None:
+        start_index = 0
+    weekly = (rules.pay_period_type if rules else "weekly") == "weekly"
 
-    if span > 20:
-        first_half = date(hi.year, hi.month, 1), date(hi.year, hi.month, 15)
-        return (*first_half,
-                f"This export covers {lo:%b %-d} to {hi:%b %-d} - a whole month, not a pay "
-                f"period. The app has suggested the first half of {hi:%B}. Change it if that "
-                "is not the run you are doing.")
-    if span > 8:
+    if not weekly:
+        if (hi - lo).days > 20:
+            return (date(hi.year, hi.month, 1), date(hi.year, hi.month, 15),
+                    f"This export covers {lo:%b %-d} to {hi:%b %-d} - a whole month, not a pay "
+                    f"period. The app has suggested the first half of {hi:%B}.")
         return lo, hi, f"Taken from the dates in the file: {lo:%b %-d} to {hi:%b %-d}."
-    return lo, hi, f"This export only covers {lo:%b %-d} to {hi:%b %-d}."
+
+    weeks = weeks_in(result, start_index)
+    if not weeks:
+        return lo, hi, f"This export covers {lo:%b %-d} to {hi:%b %-d}."
+
+    stamp = today or date.today()
+    complete = [w for w in weeks if w[1] < stamp]
+    chosen = complete[-1] if complete else weeks[-1]
+    day_name = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+                "Saturday", "Sunday"][start_index]
+    note = (f"This export covers {lo:%b %-d} to {hi:%b %-d}. Sitterwise pays weekly, "
+            f"{day_name} to {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][start_index]}, "
+            f"so the app has suggested the most recent complete week with jobs in it. "
+            "Pick a different one if that is not the run you are doing.")
+    return chosen[0], chosen[1], note
+
+
+def weeks_in(result: ImportResult, start_index: int) -> list[tuple[date, date]]:
+    """Every pay week the export has jobs in, oldest first."""
+    from .engine import week_start_for
+    starts = sorted({week_start_for(j.workday, start_index)
+                     for j in result.jobs if j.workday and j.is_payable})
+    return [(s, s + timedelta(days=6)) for s in starts]
 
 
 def half_month_periods(year: int, month: int) -> list[tuple[date, date, str]]:

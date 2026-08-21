@@ -53,8 +53,9 @@
     },
     "regular_rate_method": "weighted_average",
     "overnight_attribution": "shift_start_day",
-    "workweek_start_day": "sunday",
-    "workweek_start_confirmed": false
+    "workweek_start_day": "monday",
+    "workweek_start_confirmed": true,
+    "_workweek_note": "Sitterwise payroll runs Monday through Sunday, weekly - confirmed from sitterwise.com/payroll-question. Pay stubs go out Tuesday, direct deposit lands Friday. Because the pay period IS the workweek, weekly overtime is straightforward here: there is no part-week to allocate."
   },
   "bonuses": {
     "_comment": "Bonus and Lifesaver Bonus are taxable wages. If they are NON-discretionary, California law generally requires folding them into the regular rate, which raises overtime. The app does not do this automatically - it warns when a caregiver has both a bonus and overtime in the same week so Amy can decide.",
@@ -137,5 +138,11 @@
       "sample",
       "xxx"
     ]
+  },
+  "pay_period": {
+    "_comment": "How pay periods are shaped. Sitterwise pays weekly, Monday to Sunday. The app offers those weeks first when you upload an export, and half-months after them in case you ever need to run one.",
+    "type": "weekly",
+    "starts_on": "monday",
+    "also_offer_half_months": true
   }
 }

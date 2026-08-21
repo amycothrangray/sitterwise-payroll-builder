@@ -256,6 +256,15 @@ class Rules:
         return to_rate(chosen["rate"]) if chosen else to_rate(0)
 
     # -- statuses -------------------------------------------------------
+    # -- pay periods ----------------------------------------------------
+    @property
+    def pay_period_type(self) -> str:
+        return self.data.get("pay_period", {}).get("type", "weekly")
+
+    @property
+    def offer_half_months(self) -> bool:
+        return bool(self.data.get("pay_period", {}).get("also_offer_half_months", True))
+
     @property
     def payable_statuses(self) -> set[str]:
         return {s.lower() for s in self.data.get("payable_statuses", {}).get("pay", [])}

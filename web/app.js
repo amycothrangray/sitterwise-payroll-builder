@@ -207,12 +207,10 @@ function uploadCard(info) {
        ${esc(info.unmapped_columns.join(', '))}.</div>` : ''}
 
     <h3 style="margin-top:18px">Which payroll is this?</h3>
-    <div class="row" style="margin-top:10px">
-      ${choices.map(c => `
-        <button class="btn" onclick="pickPeriod('${c.start}','${c.end}')">
-          ${esc(c.label)} <span class="faint">· ${c.jobs} jobs</span>
-        </button>`).join('')}
-    </div>
+    ${periodButtons(choices.filter(c => c.kind !== 'half_month'),
+                    'Pay weeks — Monday to Sunday')}
+    ${periodButtons(choices.filter(c => c.kind === 'half_month'),
+                    'Or a half-month, if you need one')}
     <div class="row" style="margin-top:14px;align-items:flex-end">
       <label class="field" style="margin:0"><span>From</span>
         <input type="date" id="ps" value="${esc(info.suggested.start)}"></label>
@@ -221,6 +219,20 @@ function uploadCard(info) {
       <button class="btn btn-primary" onclick="createRun()">Start this payroll</button>
     </div>
   </div>`;
+}
+
+function periodButtons(choices, heading) {
+  if (!choices.length) return '';
+  return `
+    <div style="margin-top:14px">
+      <div class="faint" style="margin-bottom:6px">${esc(heading)}</div>
+      <div class="row">
+        ${choices.map(c => `
+          <button class="btn" onclick="pickPeriod('${c.start}','${c.end}')">
+            ${esc(c.label)} <span class="faint">· ${c.jobs} jobs</span>
+          </button>`).join('')}
+      </div>
+    </div>`;
 }
 
 function pickPeriod(start, end) { $('#ps').value = start; $('#pe').value = end; createRun(); }

@@ -64,6 +64,9 @@ four-hour booking minimum, overtime after 8 hours a day, double time after 12,
 seventh-consecutive-day rules on, weekly overtime off, and mileage on Care.com
 jobs of 40 miles or more at the IRS rate for the date of the job.
 
+Sitterwise pays weekly, Monday to Sunday. The test payroll below deliberately
+spans two of those weeks so the weekly grouping gets exercised.
+
 ---
 """
 
@@ -116,22 +119,32 @@ reimbursements. There are tests for that too.
 
 ## On the real August export
 
-Seven further tests run against a real Sitterwise export when one is available
+Ten further tests run against a real Sitterwise export when one is available
 (put it in `tests/fixtures/real/`, which git ignores, or point
 `SITTERWISE_EXPORT` at it). They check that all 324 rows read without error,
 that every paid job matches a known rate, that the payroll balances, that the
 four-hour minimum is recognised, that mileage only ever lands on Care.com jobs
-of 40 miles or more, and that these totals for Aug 1-15 have not moved:
+of 40 miles or more, that the pay week really does run Monday to Sunday, that
+the app suggests the right week, that weekly overtime would add nothing, and
+that these totals for the real pay week of **Mon 10 - Sun 16 August** have not
+moved:
 
 | | |
 |---|---:|
-| Hours worked | 977.50 |
-| Straight-time wages | $23,418.75 |
-| Four-hour minimum top-ups | $83.50 |
-| Overtime | 51.25 hrs, $618.41 premium |
-| Double time | 1.25 hrs, $28.75 premium |
-| Tips | $635.00 |
-| **Total being paid** | **$25,326.05** |
+| Caregivers | 29 |
+| Jobs | 59 |
+| Hours worked | 320.75 |
+| Regular: 283.75 hrs at $23 | $6,526.25 |
+| 3-4 children: 37.00 hrs at $28 | $1,036.00 |
+| Four-hour minimum top-up | $23.00 |
+| Overtime | 14.75 hrs, $182.06 premium |
+| Tips | $145.00 |
+| Bonuses | $60.00 |
+| Mileage: 108 miles | $82.08 |
+| Other reimbursements | $114.00 |
+| **Taxable earnings** | **$7,972.31** |
+| **Reimbursements** | **$196.08** |
+| **Total being paid** | **$8,168.39** |
 
 If a change moves one of those numbers, that should be a decision somebody
 made - not a surprise.
