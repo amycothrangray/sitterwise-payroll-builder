@@ -574,11 +574,12 @@ def _check_data_gaps(jobs: list[Job], rules: Rules) -> list[Finding]:
         out.append(Finding(
             "tier_inferred", NOTE,
             "Pay rates were worked out from the amounts, not read from the export",
-            f"Sitterwise does not export a pay rate or a number of children, so for all "
-            f"{len(inferred)} paid jobs the app worked backwards from what each job paid "
-            "to decide whether it was the regular or the 3-4 children rate. That means a "
-            "job entered at the wrong rate in Sitterwise will look correct here.",
-            "Adding a children count and a pay rate to Sitterwise would let the app check this properly.",
+            f"Sitterwise sends what each job paid but not the rate it was paid at, so for all "
+            f"{len(inferred)} paid jobs the app divided pay by hours to decide whether it was "
+            "the regular or the 3-4 children rate. It resolved every one cleanly, but it is "
+            "arithmetic standing in for a fact Sitterwise already knows.",
+            "Adding a pay rate to the export would remove the guesswork. The app reads it "
+            "automatically as soon as it appears.",
             booking_ids=[j.booking_id for j in inferred][:50],
         ))
 

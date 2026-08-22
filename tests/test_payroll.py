@@ -144,6 +144,43 @@ class TestRates(PayrollCase):
                    if f.caregiver_name == "June Salter" and f.level == "stop"]
         self.assertTrue(blocked)
 
+    def test_it_uses_a_rate_from_the_export_the_moment_one_exists(self):
+        """The whole point of asking Sitterwise for a pay rate.
+
+        Written as a small CSV in the shape Sitterwise would produce with a
+        Pay Rate column added, so the payoff is provable before anyone builds
+        it.
+        """
+        import csv
+        import tempfile
+
+        columns = ["Booking ID", "Client Name", "Service Type", "Location Type",
+                   "Start Date", "Start Time", "End Date", "End Time", "Total Hours",
+                   "Caregiver Name", "Status", "Paid to Caregiver", "Pay Rate"]
+        rows = [
+            # A 3-4 children job. The pay is exactly what a $23 job would pay,
+            # so working backwards would call it standard. The stated rate is
+            # what makes it unambiguous.
+            ["99001", "Stated Rate Family", "Babysitter", "Private Home",
+             "2026-08-05", "09:00", "2026-08-05", "13:00", "4.00",
+             "Nell Okonkwo", "completed", "92.00", "28.00"],
+        ]
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "with-rate.csv"
+            with open(path, "w", newline="", encoding="utf-8") as fh:
+                writer = csv.writer(fh)
+                writer.writerow(columns)
+                writer.writerows(rows)
+            result = import_export(path, self.rules)
+
+        job = result.jobs[0]
+        self.assertEqual(job.rate_basis, "stated_in_export")
+        self.assertEqual(job.tier_key, "three_to_four")
+        self.assertEqual(job.rate, Decimal("28.0000"))
+        # And without the stated rate the same row would have been read as the
+        # regular tier, which is exactly the ambiguity the field removes.
+        self.assertEqual(job.paid_to_caregiver / job.hours_worked, Decimal("23"))
+
     def test_the_app_says_out_loud_that_it_guessed_the_rate(self):
         # There is no children count in the export, so every tier is inferred.
         self.assertIn("tier_inferred", self.codes())

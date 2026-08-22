@@ -27,28 +27,25 @@ caregiver_id            stable, immutable, never reused
 onpay_clock_user        the matching id in OnPay (see note at the end)
 ```
 
-### 2. `children_count`
+### 2. The rate and tier that were actually applied
 
-**This is the most important one.** The $23 vs $28 decision rests entirely on
-how many children were on the job, and that number is nowhere in the export.
-The app infers the tier by dividing pay by hours — so it can reproduce a wrong
-rate but never detect one.
-
-```
-children_count          integer, required on every childcare booking
-```
-
-With this, the app can finally answer "this job had 3 children but was paid at
-$23." Without it, that check is impossible.
-
-### 3. The rate and hours as separate fields
-
-`Paid to Caregiver` is a single number with the rate, the hours, and the
-four-hour minimum all baked in and unrecoverable.
+**This is the important one.** `Paid to Caregiver` is a single dollar figure
+with the rate, the hours and the four-hour minimum all baked in and
+unrecoverable. The app currently works backwards - dividing pay by hours - to
+decide whether a job was the $23 or the $28 tier.
 
 ```
 pay_rate                the $/hr actually applied
 pay_tier                standard | three_to_four | group | pet
+```
+
+Sitterwise already knows both of these at the moment it prices a job. Sending
+them out with the export removes every bit of the guesswork, and means a
+future rate change does not make old payroll unreadable.
+
+### 3. Hours worked and hours billed, kept apart
+
+```
 hours_worked            actual clock time
 hours_billed            what the caregiver is paid for
 minimum_applied         boolean
@@ -56,11 +53,12 @@ guarantee_hours         hours paid but not worked
 ```
 
 The four-hour minimum is real and currently invisible: 199 of 200 worked jobs
-in the August export fit `max(hours, 4) × rate` exactly. A 3.75-hour job pays
-$92.00 and nothing anywhere says why. This matters for more than tidiness —
-guarantee hours are **paid but not worked**, so they must not count toward
-overtime thresholds. The app already handles this, but only because it worked
-the rule out from the arithmetic.
+in the August export fit `max(hours, 4) x rate` exactly. A 3.75-hour job pays
+$92.00 and nothing anywhere says why.
+
+This matters for more than tidiness. Guarantee hours are **paid but not
+worked**, so they must not count toward overtime thresholds. The app already
+handles that, but only because it worked the rule out from the arithmetic.
 
 ### 4. Mileage, properly gated
 
@@ -284,7 +282,23 @@ August jobs were at hotels, which are not private households.
 
 Every value in the export is a string, including money, hours and dates.
 
-### 15. A pay-period parameter on the export
+### 15. Deduplicate child lists, and consider exporting the count
+
+Not needed for payroll to calculate correctly - if the rate is derived from
+the child count, exporting the rate (item 2) is enough.
+
+It matters for one specific failure. Child lists can hold the same kid twice,
+once by name and once by description ("Aurelia" and "3yr old girl"). That
+inflates a 2-child job to 3, which auto-prices it at $28 instead of $23 - and
+because the rate is *derived*, the wrong rate looks entirely confident.
+Nothing downstream can see it, including the payroll app.
+
+The right fix is at entry: stop duplicate children being recorded in the first
+place. Exporting `children_count` alongside the rate would let payroll
+cross-check the tier against the count and the client charge, but that is
+second best - catching a bad number rather than not creating one.
+
+### 16. A pay-period parameter on the export
 
 The export is a whole calendar month with no notion of a pay period, so the
 app has to ask which half you mean every time.

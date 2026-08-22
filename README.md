@@ -191,6 +191,10 @@ works, so it can be revisited without rewriting anything.
 
 ## One thing still open
 
-**Children count.** Until Sitterwise records how many children were on a job,
-the app can reproduce a wrong pay rate but can never detect one. This is the
-single most valuable thing to add. See `docs/SITTERWISE-CHANGES.md`.
+**The pay rate is not in the export.** Sitterwise sends the amount each job
+paid, but not the rate it was paid at, so the app works the tier out by
+dividing pay by hours. It resolves every real job cleanly, but it is
+arithmetic standing in for a fact Sitterwise already knows.
+
+Exporting `pay_rate` and `pay_tier` removes the guesswork entirely. See
+`docs/SITTERWISE-CHANGES.md`.
