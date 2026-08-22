@@ -173,16 +173,24 @@ data/                your payroll history (not in git)
 
 ---
 
-## Two things still open
+## How overtime is set
 
-**The overtime rules.** The app uses California's standard 8/40 rules with
-double time. Whether these caregivers are instead "personal attendants" under
-the Domestic Worker Bill of Rights (9/45, no double time) is a question for an
-employment attorney — and it's complicated by the fact that a large share of
-Sitterwise jobs happen in hotels and corporate venues rather than private
-homes. The thresholds are all settings, so the answer can be applied without
-rewriting anything.
+**California 8/40 with double time** — decided 22 August 2026. Time and a half
+over 8 hours in a day and 40 in a week, double time over 12 hours in a day,
+and seventh-consecutive-day rules.
+
+Weekly overtime is switched off. Because Sitterwise pays Monday-to-Sunday
+weeks, daily overtime already covers everyone: across all four real August pay
+weeks, turning weekly overtime on would have added nothing. Anyone who does
+cross 40 hours still gets flagged, so it can never go unnoticed.
+
+The alternative treatment — personal attendants under the Domestic Worker Bill
+of Rights, at 9 hours a day and 45 a week with no double time — is not being
+used. Every threshold is a setting, and there are tests proving the switch
+works, so it can be revisited without rewriting anything.
+
+## One thing still open
 
 **Children count.** Until Sitterwise records how many children were on a job,
-the app can reproduce a wrong rate but can never detect one. This is the
+the app can reproduce a wrong pay rate but can never detect one. This is the
 single most valuable thing to add. See `docs/SITTERWISE-CHANGES.md`.

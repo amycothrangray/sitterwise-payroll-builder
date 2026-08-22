@@ -667,14 +667,17 @@ straight back to $115.00.
 
 ---
 
-## The same payroll under personal-attendant rules
+## Proof the overtime rules really are just settings
 
-If your employment attorney confirms these caregivers are personal attendants
-under the Domestic Worker Bill of Rights, change three things in Settings -
-daily overtime to 9 hours, weekly to 45, double time off - and nothing else.
-No code changes.
+Sitterwise uses California 8/40 with double time, decided 22 August 2026. The
+alternative - personal attendants under the Domestic Worker Bill of Rights, at
+9 hours a day and 45 a week with no double time - is not in use.
 
-What moves:
+These tests exist anyway, because a payroll rule that cannot be changed
+without a developer is not really a setting. Switching to 9/45 takes three
+changes in Settings and no code changes at all.
+
+What would move if it were ever switched:
 
 | | 8/40 with double time | 9/45, no double time |
 |---|---|---|

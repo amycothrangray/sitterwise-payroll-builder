@@ -1001,9 +1001,9 @@ VIEWS.settings = () => {
 
   <div class="card">
     <h2>Overtime</h2>
-    <div class="banner warn">These are set to California's standard rules. If your employment
-      attorney confirms your caregivers are personal attendants, change the daily threshold to 9,
-      the weekly to 45, and turn double time off.</div>
+    <div class="banner locked">California 8/40 with double time — decided 22 August 2026.
+      Time and a half over 8 hours in a day, double time over 12, and seventh-consecutive-day
+      rules. Everything here is a setting, so it can be changed later without rebuilding anything.</div>
     <label class="field"><span>Overtime after this many hours in a day</span>
       <input type="number" step="0.5" id="dailyot" value="${ot.daily_overtime.threshold_hours}"></label>
     <label class="field"><span>Double time after this many hours in a day</span>

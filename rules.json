@@ -1,7 +1,7 @@
 {
   "_comment": "Sitterwise payroll rules. Edit this file to change how payroll is calculated. Every payroll run records which version of this file it used, so reopening an old payroll shows the rules that were in force at the time.",
   "version": "2026.08.1",
-  "effective_notes": "Defaults chosen 2026-08-21: conservative California overtime (8/40 + double time), weekly overtime OFF per Amy's decision, tier inferred from pay.",
+  "effective_notes": "Settled with Amy, 22 August 2026: California 8/40 overtime with double time; weekly overtime off (daily overtime already covers every real August pay week); pay tier inferred from the amount paid until Sitterwise records a children count; pay periods are Monday-to-Sunday weeks; mileage is Care.com only, paying the miles above 40 round trip.",
   "pay_rates": {
     "_comment": "Hourly rates Sitterwise pays caregivers. 'label' is what Amy sees on screen.",
     "tiers": [
@@ -26,7 +26,7 @@
     "counts_toward_regular_rate": false
   },
   "overtime": {
-    "_comment": "California overtime. Amy chose the conservative 8/40 + double-time package on 2026-08-21, pending confirmation from an employment attorney. To switch to personal-attendant treatment (Domestic Worker Bill of Rights), set daily_threshold_hours to 9, weekly_threshold_hours to 45, and daily_double_time.enabled to false.",
+    "_comment": "California overtime, 8/40 with double time. Amy's decision, 22 August 2026: Sitterwise caregivers are treated as ordinary non-exempt employees - time and a half over 8 hours in a day and 40 in a week, double time over 12, and seventh-consecutive-day rules. This is the conservative reading and the one that applies to Sitterwise. The alternative (personal attendants under the Domestic Worker Bill of Rights: 9/45, no double time) is not being used. Every threshold below is still a setting, so this can be revisited without touching any code.",
     "daily_overtime": {
       "enabled": true,
       "threshold_hours": 8.0,
