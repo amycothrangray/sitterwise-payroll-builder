@@ -134,3 +134,90 @@ hand arithmetic, and the reimbursement type saves a review every run. The
 caregiver ID is small and makes everything downstream steadier.
 
 Happy to talk any of this through.
+
+---
+
+# Part two — mileage at check-out
+
+Platform work rather than export work, and a suggestion: I have not seen the
+codebase, so the field names are illustrative and the behaviour is the ask.
+
+## A. Show the caregiver the maths while they type
+
+On Care.com jobs only, check-out gains a mileage section. On every other job
+it is not there at all — no field, no prompt, nothing to fill in by mistake.
+
+One input, **round trip miles**, with a note on how to measure it (home → job
+→ home in Google Maps). Underneath, the figures update live:
+
+```
+Round trip        54 miles
+Paid for          14 miles   (the miles above 40)
+Reimbursement     $10.64
+```
+
+The existing mileage request form already behaves this way with "Total Miles
+above 40" and "Amount" — worth reusing so the two places agree.
+
+## B. Say plainly what needs no approval
+
+Right now a caregiver facing a long drive has to remember a policy. Better to
+tell them at the moment it matters, and to be generous about it — the point is
+that nobody under-claims out of uncertainty.
+
+> **You can always claim up to 50 miles.**
+>
+> Anything up to a 50-mile round trip is reimbursed automatically — no form,
+> no approval. You're paid for the miles above 40, so a 50-mile round trip is
+> $7.60 back.
+>
+> Driving further than that? Send a mileage request before the job and we'll
+> get it approved. If it isn't approved in time we'll still pay you for 50
+> miles.
+
+So someone entering 68 miles with no approval on file sees the honest version
+rather than a rejection:
+
+```
+Round trip        68 miles
+Approved for      50 miles   (no advance approval on file)
+Paid for          10 miles
+Reimbursement     $7.60      -> request approval for the rest
+```
+
+## C. A place to record that Care.com approved it
+
+Over 50 miles needs approval, and there is nowhere in Sitterwise that says
+whether it was given. The request form collects the ask; nothing captures the
+answer.
+
+```
+mileage_approval
+  care_com_job_number
+  requested_round_trip_miles
+  status                 pending | approved | denied
+  approved_miles         what Care.com actually agreed to
+  evidence               attachment or note - the email, the screenshot
+  confirmed_by           + confirmed_at
+```
+
+The existing form creates one of these as `pending`. Someone in the office
+confirms with Care.com, attaches whatever came back, and marks it approved
+with the mileage agreed. A short queue of pending requests is probably all the
+admin screen needs to be.
+
+Check-out then reads it: an approved record raises the cap from 50 miles to
+whatever was agreed, and the caregiver sees that as they type.
+
+## D. What payroll would read
+
+```
+round_trip_miles     what the caregiver entered
+payable_miles        computed, after the cap and the 40-mile deduction
+mileage_amount       computed
+approval_status      so anything above the automatic 50 can be checked
+```
+
+With those four, payroll stops inferring mileage from the dollar amount
+entirely, and can tell at a glance whether a large claim had approval behind
+it.
