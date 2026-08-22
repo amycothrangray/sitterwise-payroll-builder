@@ -13,7 +13,7 @@ numbers rather than reading them, and these fields would let it read them.
 
 ---
 
-## The three that would help most
+## The four that would help most
 
 ### 1. The pay rate
 
@@ -59,7 +59,29 @@ handles it permanently. It would also help to keep the mileage option off
 non-Care.com bookings — a flag on the client account (`mileage_program_enabled`,
 default off) is more durable than keying off the service type.
 
-### 3. A caregiver ID
+### 3. What a reimbursement was for
+
+Sitterwise records this somewhere — parking, supplies, a booster seat — but it
+doesn't reach the export. Fourteen reimbursements in August, no descriptions.
+
+```
+other_reimbursement_type          parking | supplies | tolls | other
+other_reimbursement_description   free text
+```
+
+Two reasons it matters more than it looks:
+
+Reimbursements are **not taxable and not wages**, so they have to be
+separable from pay with certainty. Right now the app tells mileage from
+everything else by checking whether the amount divides into whole miles at the
+IRS rate — which works, but it's arithmetic standing in for a fact Sitterwise
+already has.
+
+And because it can't tell what the rest were for, it flags every one of them
+for review. That's a handful of manual checks every single payroll run, on
+money that was probably fine. A type field turns most of those into nothing.
+
+### 4. A caregiver ID
 
 Payroll matches caregivers by display name today, so a name change or a stray
 space splits one person in two.
@@ -75,11 +97,6 @@ OnPay matches imported rows on a field called **Clock User**. Setting it to
 ---
 
 ## Smaller things, whenever convenient
-
-**Reimbursement description.** Sitterwise records what a reimbursement was for
-somewhere, but it doesn't reach the export — fourteen in August with no
-description. A type and a note would mean payroll can tell parking from
-mileage instead of inferring it.
 
 **Hours worked vs hours paid.** The four-hour minimum is real but invisible: a
 3.75-hour job pays $92.00 and nothing says why. `hours_worked`,
@@ -110,10 +127,10 @@ relies on it.
 
 ---
 
-## If only two get done
+## If only some get done
 
-**The pay rate** and **computed mileage**. The first ends the guesswork; the
-second ends the hand arithmetic. The caregiver ID is small and makes
-everything downstream steadier.
+The first three. The pay rate ends the guesswork, computed mileage ends the
+hand arithmetic, and the reimbursement type saves a review every run. The
+caregiver ID is small and makes everything downstream steadier.
 
 Happy to talk any of this through.
