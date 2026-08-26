@@ -6,7 +6,7 @@
 5,Platform,"Mileage field at check-out, Care.com jobs only",One box for round trip miles. On any other kind of job the box should not appear at all.,High
 6,Platform,Show the caregiver the maths as they type,"Round trip 54 miles, paid for 14, reimbursement $10.64. The mileage request form already does this.",High
 7,Platform,Tell caregivers 50 miles needs no approval,"""You can always claim up to 50 miles."" Stops people under-claiming because they are unsure of the policy.",High
-8,Platform,Somewhere to record that Care.com approved a long drive,"Over 50 miles needs approval and nothing captures the answer. Store approved / denied, the miles agreed, and the email or screenshot.",Medium
+8,Platform,Record what Care.com said about a long drive,The Cognito form already does the maths and goes to Saudia - nothing to rebuild. Her answer just never comes back to Sitterwise. One field on the booking for approved miles would do it.,Medium
 9,Export,Let a tip be recorded before a job is marked paid,"Tips only land on rows already marked paid, so a finished job shows a blank tip whether or not there was one.",Medium
 10,Export,Split hours worked from hours paid,The 4-hour minimum is invisible: a 3.75-hour job pays $92 and nothing says why. Matters because those extra hours do not count toward overtime.,Medium
 11,Export,Keep blank different from zero,"Tip is blank on 182 rows and ""0.00"" on 117. Blank should mean nobody asked; 0 should mean there wasn't one.",Medium

@@ -185,29 +185,35 @@ Paid for          10 miles
 Reimbursement     $7.60      -> request approval for the rest
 ```
 
-## C. A place to record that Care.com approved it
+## C. Let Sitterwise know what Saudia said
 
-Over 50 miles needs approval, and there is nowhere in Sitterwise that says
-whether it was given. The request form collects the ask; nothing captures the
-answer.
+The request already works. The Cognito form collects the drive, does the
+maths, takes the Google Maps screenshot and goes straight to Saudia at
+Care.com, who approves it or doesn't. Nothing there needs rebuilding.
+
+The gap is only that her answer never comes back. Sitterwise doesn't know
+whether a 68-mile drive was approved, so check-out can't raise the cap and
+payroll can't tell an authorised claim from an unauthorised one.
+
+The smallest thing that closes it is one field on the booking:
 
 ```
-mileage_approval
-  care_com_job_number
-  requested_round_trip_miles
-  status                 pending | approved | denied
-  approved_miles         what Care.com actually agreed to
-  evidence               attachment or note - the email, the screenshot
-  confirmed_by           + confirmed_at
+mileage_approved_miles    blank = no approval on file
 ```
 
-The existing form creates one of these as `pending`. Someone in the office
-confirms with Care.com, attaches whatever came back, and marks it approved
-with the mileage agreed. A short queue of pending requests is probably all the
-admin screen needs to be.
+Whoever gets Saudia's reply types the number. Check-out raises the 50-mile cap
+to it; payroll reads it as the authorisation. If it's worth more effort later,
+Cognito can post a submission to a webhook so the pending record appears in
+Sitterwise on its own — but the single field is the part that matters.
 
-Check-out then reads it: an approved record raises the cap from 50 miles to
-whatever was agreed, and the caregiver sees that as they type.
+One snag either way: the Cognito form is keyed on the Care.com job number, and
+that number isn't in the Sitterwise export. Without it there's nothing to
+match a request back to a booking.
+
+Worth knowing: the Cognito form already computes the amount correctly — miles
+above 40, times the rate. The policy maths is right where the caregiver sees
+it. It's only the figure that ends up on the booking that has been the whole
+drive.
 
 ## D. What payroll would read
 
