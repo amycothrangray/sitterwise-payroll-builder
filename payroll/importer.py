@@ -52,6 +52,18 @@ COLUMN_MAP = {
     "createdat": "created_at",
     "adminnotes": "admin_notes",
     "lifesaverbonus": "lifesaver_bonus",
+    # fields Sitterwise added in the August 2026 export
+    "carecomjobnumber": "care_com_job_number",
+    "hoursworked": "hours_worked_stated",
+    "hoursbilled": "hours_billed_stated",
+    "minimumapplied": "minimum_applied_stated",
+    "onpayclockuser": "onpay_clock_user",
+    "reimbursementdescription2": "other_reimbursement_description",
+    "roundtripmiles": "round_trip_miles",
+    "mileageapprovedmiles": "mileage_approved_miles",
+    "mileageapprovalstatus": "mileage_approval_status",
+    "payablemiles": "payable_miles",
+    "hourlyrate": "pay_rate",
     # tolerated aliases for fields Sitterwise may add later
     "caregiverid": "caregiver_id",
     "childrencount": "children_count",
@@ -70,6 +82,9 @@ COLUMN_MAP = {
 
 REQUIRED = ["booking_id", "caregiver_name", "start_date", "start_time",
             "end_date", "end_time", "status", "paid_to_caregiver"]
+
+# Sitterwise stopped exporting Total Hours once it started exporting Hours
+# Worked. Either is accepted as the cross-check against the clock.
 
 
 def _squash(name) -> str:
@@ -181,7 +196,9 @@ def _build_job(row_number, cell, rules: Rules, today: date) -> Job:
 
     raw_tip = cell("tip")
     raw_reimb = cell("reimbursement")
-    raw_total_hours = cell("total_hours")
+    raw_total_hours = cell("hours_worked_stated")
+    if is_blank(raw_total_hours):
+        raw_total_hours = cell("total_hours")
 
     job = Job(
         row_number=row_number,
@@ -212,7 +229,7 @@ def _build_job(row_number, cell, rules: Rules, today: date) -> Job:
     _set_hours_and_workday(job, rules)
     _set_payability(job, rules, today)
     _set_rate(job, cell, rules)
-    _set_pay(job, rules)
+    _set_pay(job, rules, cell)
     _split_reimbursement(job, cell, rules)
     return job
 
@@ -327,12 +344,30 @@ def _apply_tier(job: Job, tier: dict, basis: str) -> None:
     job.rate_basis = basis
 
 
-def _set_pay(job: Job, rules: Rules) -> None:
-    job.hours_paid = job.hours_worked
-    if rules.minimum_enabled and 0 < job.hours_worked < rules.minimum_hours:
-        job.hours_paid = rules.minimum_hours
-        job.minimum_applied = True
-    job.guarantee_hours = to_hours(job.hours_paid - job.hours_worked)
+def _set_pay(job: Job, rules: Rules, cell=None) -> None:
+    """Work out what the caregiver is paid for, as opposed to what they worked.
+
+    Sitterwise now exports Hours Billed and a Minimum Applied flag. When they
+    are there we use them rather than reapplying the rule ourselves - the
+    platform is the authority on what it decided to pay.
+    """
+    stated_billed = cell("hours_billed_stated") if cell else None
+    stated_minimum = cell("minimum_applied_stated") if cell else None
+
+    if not is_blank(stated_billed):
+        job.hours_paid = to_hours(stated_billed)
+        job.minimum_applied = str(stated_minimum).strip().lower() in ("true", "yes", "1")
+        if job.hours_paid < job.hours_worked:
+            job.import_notes.append(
+                f"Sitterwise says this job is billed at {job.hours_paid} hours but the clock "
+                f"shows {job.hours_worked} worked. The app paid the billed figure."
+            )
+    else:
+        job.hours_paid = job.hours_worked
+        if rules.minimum_enabled and 0 < job.hours_worked < rules.minimum_hours:
+            job.hours_paid = rules.minimum_hours
+            job.minimum_applied = True
+    job.guarantee_hours = to_hours(max(Decimal("0"), job.hours_paid - job.hours_worked))
     job.straight_pay = money(job.hours_worked * job.rate)
     job.guarantee_pay = money(job.guarantee_hours * job.rate)
 
@@ -344,6 +379,42 @@ def _set_pay(job: Job, rules: Rules) -> None:
         )
 
 
+def _stated_mileage(job: Job, cell, rules: Rules) -> bool:
+    """Use Sitterwise's own mileage columns when they carry a real figure.
+
+    The columns arrived in the August 2026 export but are zero on every row so
+    far, so a zero is treated as "nothing recorded" rather than "no mileage" -
+    otherwise a reimbursement that plainly is mileage would be hidden by an
+    empty column.
+    """
+    amount = cell("mileage_amount")
+    payable = cell("payable_miles")
+    round_trip = cell("round_trip_miles")
+    if is_blank(amount) or money(amount) <= 0:
+        return False
+
+    rate_used = rules.mileage_rate_for(job.workday or date.today())
+    stated_rate = cell("mileage_rate")
+    if not is_blank(stated_rate) and to_rate(stated_rate) > 0:
+        rate_used = to_rate(stated_rate)
+
+    job.mileage_amount = money(amount)
+    job.mileage_rate = rate_used
+    job.mileage_payable_miles = Decimal(str(payable)) if not is_blank(payable) else None
+    job.mileage_miles = (Decimal(str(round_trip)) if not is_blank(round_trip)
+                         else (job.mileage_payable_miles + rules.deduct_first_miles
+                               if job.mileage_payable_miles is not None else None))
+    if job.mileage_payable_miles is not None:
+        job.mileage_policy_amount = money(job.mileage_payable_miles * rate_used)
+    job.other_reimbursement = money(max(Decimal("0"), job.reimbursement - job.mileage_amount))
+    job.mileage_from_export = not is_blank(round_trip)
+    job.import_notes.append(
+        f"Mileage came from Sitterwise: {job.mileage_payable_miles} payable miles, "
+        f"${job.mileage_amount}. No guessing needed."
+    )
+    return True
+
+
 def _split_reimbursement(job: Job, cell, rules: Rules) -> None:
     """Separate mileage from every other kind of reimbursement.
 
@@ -352,6 +423,9 @@ def _split_reimbursement(job: Job, cell, rules: Rules) -> None:
     of miles at the rate in force that day is almost certainly mileage. This
     whole function disappears the day Sitterwise stores miles properly.
     """
+    if _stated_mileage(job, cell, rules):
+        return
+
     stated_miles = cell("mileage_miles")
     if not is_blank(stated_miles):
         miles = Decimal(str(stated_miles))

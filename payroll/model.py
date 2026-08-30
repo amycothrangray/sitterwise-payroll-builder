@@ -57,6 +57,7 @@ class Job:
     mileage_amount: Decimal = Decimal("0")
     other_reimbursement: Decimal = Decimal("0")
     mileage_rejected_reason: str = ""   # service_type | under_minimum
+    mileage_from_export: bool = False    # Sitterwise sent the miles, we did not infer them
 
     # --- bookkeeping ---------------------------------------------------
     is_payable: bool = False

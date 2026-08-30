@@ -13,12 +13,16 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+# Matches the shape Sitterwise exports as of the August 2026 changes.
 HEADER = [
-    "Booking ID", "ULID", "Client Name", "Client Email", "Client Phone", "Service Type",
-    "Location Type", "Hotel", "Address", "Start Date", "Start Time", "End Date", "End Time",
-    "Total Hours", "Caregiver Name", "Status", "Payment Status", "Charge to Client",
-    "Paid to Caregiver", "Sitterwise Cut", "Reimbursement", "Tip", "Bonus", "Total Amount",
-    "Created At", "Admin Notes", "Lifesaver Bonus",
+    "Booking ID", "ULID", "Care.com Job Number", "Client Name", "Client Email", "Client Phone",
+    "Service Type", "Location Type", "Hotel", "Address", "Start Date", "Start Time",
+    "End Date", "End Time", "Hours Worked", "Hours Billed", "Minimum Applied",
+    "Caregiver ID", "Caregiver Name", "OnPay Clock User", "Status", "Payment Status",
+    "Charge to Client", "Paid to Caregiver", "Pay Rate", "Sitterwise Cut",
+    "Reimbursement", "Reimbursement Description", "Round Trip Miles",
+    "Mileage Approved Miles", "Mileage Approval Status", "Payable Miles", "Mileage Amount",
+    "Tip", "Bonus", "Total Amount", "Created At", "Admin Notes", "Lifesaver Bonus",
 ]
 
 MINIMUM_HOURS = Decimal("4")
@@ -28,7 +32,9 @@ _next_id = [90000]
 def booking(caregiver, day, start, hours, rate, *, status="completed", tip=None,
             reimbursement=None, bonus="0.00", lifesaver=0, service="Babysitter",
             location="Private Home", hotel="", client="Test Family", paid=None,
-            total_hours=None, booking_id=None, notes=""):
+            total_hours=None, booking_id=None, notes="", reimbursement_note="",
+            round_trip_miles=None, payable_miles=None, mileage_amount=None,
+            state_rate=True, care_com_job=""):
     """One row, priced the way Sitterwise prices it: hours x rate, with a
     four-hour minimum, and never a rate column."""
     _next_id[0] += 1
@@ -41,6 +47,7 @@ def booking(caregiver, day, start, hours, rate, *, status="completed", tip=None,
     return {
         "Booking ID": ident,
         "ULID": f"01TEST{ident}",
+        "Care.com Job Number": care_com_job,
         "Client Name": client,
         "Client Email": "family@example.com",
         "Client Phone": "+16195550000",
@@ -52,14 +59,25 @@ def booking(caregiver, day, start, hours, rate, *, status="completed", tip=None,
         "Start Time": begin.strftime("%H:%M"),
         "End Date": finish.date().isoformat(),
         "End Time": finish.strftime("%H:%M"),
-        "Total Hours": f"{Decimal(str(total_hours if total_hours is not None else hours)):.2f}",
+        "Hours Worked": f"{Decimal(str(total_hours if total_hours is not None else hours)):.2f}",
+        "Hours Billed": f"{payable:.2f}",
+        "Minimum Applied": "True" if payable > Decimal(str(hours)) else "False",
+        "Caregiver ID": str(abs(hash(caregiver)) % 900 + 100) if caregiver.strip() else "",
         "Caregiver Name": caregiver,
+        "OnPay Clock User": "",
         "Status": status,
         "Payment Status": "charged" if status in ("paid", "completed") else "pending",
         "Charge to Client": f"{charge:.2f}",
         "Paid to Caregiver": f"{pay:.2f}",
+        "Pay Rate": f"{Decimal(str(rate)):.2f}" if state_rate else "",
         "Sitterwise Cut": f"{charge - pay:.2f}",
         "Reimbursement": reimbursement,
+        "Reimbursement Description": reimbursement_note,
+        "Round Trip Miles": round_trip_miles,
+        "Mileage Approved Miles": None,
+        "Mileage Approval Status": "not_needed",
+        "Payable Miles": payable_miles,
+        "Mileage Amount": mileage_amount,
         "Tip": tip,
         "Bonus": bonus,
         "Total Amount": f"{charge:.2f}",
@@ -105,35 +123,57 @@ def build_rows() -> list[dict]:
     add(booking("Nina Alvarez", d(6), "17:00", 4, 23, status="paid", tip="75.00"))
 
     # -- mileage (a whole number of miles at $0.76) -----------------------
+    # 80-mile round trip, 40 payable. Correct under policy.
     add(booking("Gwen Mabry", d(7), "09:00", 5, 23, reimbursement="30.40",
                 service="Corporate (Invoiced)", client="Care Family",
+                reimbursement_note="mileage", care_com_job="5512001",
+                round_trip_miles="80", payable_miles="40", mileage_amount="30.40",
                 notes="Drove to Carlsbad"))
 
     # -- a reimbursement that is not mileage ------------------------------
-    add(booking("Sofia Bright", d(7), "09:00", 4, 23, reimbursement="22.50"))
+    add(booking("Sofia Bright", d(7), "09:00", 4, 23, reimbursement="22.50",
+                reimbursement_note="Ace parking, no street parking available"))
 
     # -- mileage claimed on a job that does not qualify for it -------------
     # 40 miles at $0.76, but on a Babysitter job. Mileage is Care.com only.
     add(booking("Faye Nakamura", d(6), "09:00", 5, 23, reimbursement="30.40"))
 
     # -- a Care.com mileage claim bigger than the commission on the job ----
+    # Paid for the whole 60-mile drive instead of the 20 miles above 40.
     add(booking("Della Cruz", d(7), "09:00", 4, 23, service="Corporate (Invoiced)",
-                reimbursement="76.00", client="Care Family"))
+                reimbursement="45.60", client="Care Family", reimbursement_note="mileage",
+                care_com_job="5512003", round_trip_miles="60", payable_miles="20",
+                mileage_amount="45.60"))
 
     # -- a Care.com claim under the 40-mile minimum ------------------------
+    # A long approved drive on a short job: $76 of mileage on a job
+    # Sitterwise made $48 on.
+    add(booking("Blythe Ferrer", d(6), "09:00", 4, 23, service="Corporate (Invoiced)",
+                client="Care Family", reimbursement="76.00", reimbursement_note="mileage",
+                care_com_job="5512006", round_trip_miles="140", payable_miles="100",
+                mileage_amount="76.00"))
+
+    # A 30-mile round trip - under the 40 miles a claim needs.
     add(booking("Nadia Okoro", d(5), "09:00", 4, 23, service="Corporate (Invoiced)",
-                reimbursement="15.20", client="Care Family"))
+                reimbursement="15.20", client="Care Family", reimbursement_note="mileage",
+                care_com_job="5512004", round_trip_miles="30", payable_miles="0",
+                mileage_amount="15.20"))
 
     # -- a claim that follows the policy exactly ----------------------------
     # 45-mile round trip pays the 5 miles above 40: 5 x $0.76 = $3.80.
     # Only recognised when Settings say the amount is already the payable
     # figure rather than the whole drive.
+    # Sitterwise sent no round trip figure, so the app cannot check it.
     add(booking("Pearl Adeyemi", d(4), "09:00", 5, 23, service="Corporate (Invoiced)",
-                reimbursement="3.80", client="Care Family"))
+                reimbursement="3.80", client="Care Family", reimbursement_note="mileage",
+                care_com_job="5512005"))
 
     # -- both a tip and a reimbursement -----------------------------------
+    # 94-mile round trip, 54 payable. Correct, but over 50 so it needed a form.
     add(booking("Hana Kimura", d(8), "12:00", 6, 28, status="paid", tip="50.00",
-                reimbursement="41.04", service="Corporate (Invoiced)", client="Care Family"))
+                reimbursement="41.04", service="Corporate (Invoiced)", client="Care Family",
+                reimbursement_note="mileage", care_com_job="5512002",
+                round_trip_miles="94", payable_miles="54", mileage_amount="41.04"))
 
     # -- the same booking twice -------------------------------------------
     add(booking("Cleo Barnes", d(4), "09:00", 5, 23, booking_id=95001))
@@ -144,7 +184,7 @@ def build_rows() -> list[dict]:
     add(booking("Ada Whitlow", d(5), "12:00", 4, 23))
 
     # -- pay that matches no rate we know about ---------------------------
-    add(booking("June Salter", d(6), "09:00", 4, 23, paid="99.99"))
+    add(booking("June Salter", d(6), "09:00", 4, 23, paid="99.99", state_rate=False))
 
     # -- the four-hour minimum --------------------------------------------
     add(booking("Belle Cruz", d(7), "18:00", 2.5, 23, status="paid"))
@@ -178,7 +218,9 @@ def build_rows() -> list[dict]:
 
     # -- mileage in the first half of the year, when the IRS rate was lower --
     add(booking("Gwen Mabry", date(2026, 3, 10), "09:00", 5, 23, reimbursement="29.00",
-                service="Corporate (Invoiced)", client="Care Family"))
+                service="Corporate (Invoiced)", client="Care Family",
+                reimbursement_note="mileage", round_trip_miles="80", payable_miles="40",
+                mileage_amount="29.00"))
 
     return rows
 

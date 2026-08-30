@@ -62,6 +62,25 @@ class TestRealExport(unittest.TestCase):
         self.assertEqual(self.result.missing_columns, [])
         self.assertEqual(self.result.unmapped_columns, [])
 
+    def test_the_rate_comes_from_the_export_not_from_arithmetic(self):
+        """Sitterwise now sends Pay Rate, so nothing should be inferred."""
+        inferred = [j.booking_id for j in self.payroll.period_jobs
+                    if not j.rate_basis == "stated_in_export"]
+        self.assertEqual(inferred, [])
+
+    def test_the_platform_and_the_app_agree_on_every_job(self):
+        """Hours Billed x Pay Rate should equal Paid to Caregiver, every time."""
+        self.assertEqual(self.payroll.reconciliation.pay_differences, [])
+
+    def test_the_four_hour_minimum_comes_from_the_platform(self):
+        """Sitterwise now sends Hours Billed and a Minimum Applied flag, so the
+        app reads the top-up rather than reapplying the rule itself."""
+        topped = [j for j in self.result.jobs if j.minimum_applied]
+        self.assertTrue(topped)
+        for job in topped:
+            self.assertGreater(job.hours_paid, job.hours_worked)
+            self.assertEqual(job.hours_paid, self.rules.minimum_hours)
+
     def test_every_paid_job_matches_a_known_rate(self):
         unmatched = [j.booking_id for j in self.payroll.period_jobs
                      if j.tier_key not in ("standard", "three_to_four")]
@@ -120,7 +139,9 @@ class TestRealExport(unittest.TestCase):
             "dt_hours": "0.00",
             "tips": "145.00",
             "bonus": "60.00",
-            "mileage_miles": "108",
+            # Read as round trips now, not as payable miles: two claims in the
+            # week, each 40 miles longer than the payable figure.
+            "mileage_miles": "188",
             "mileage_amount": "82.08",
             "other_reimbursement": "114.00",
             "taxable_earnings": "7972.31",

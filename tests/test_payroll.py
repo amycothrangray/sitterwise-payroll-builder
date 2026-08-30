@@ -181,12 +181,13 @@ class TestRates(PayrollCase):
         # regular tier, which is exactly the ambiguity the field removes.
         self.assertEqual(job.paid_to_caregiver / job.hours_worked, Decimal("23"))
 
-    def test_the_app_says_out_loud_that_it_guessed_the_rate(self):
-        # There is no children count in the export, so every tier is inferred.
-        self.assertIn("tier_inferred", self.codes())
+    def test_the_guesswork_note_disappears_once_rates_are_exported(self):
+        # Sitterwise now sends Pay Rate, so nothing is inferred and the note
+        # about working rates out from the amounts should not appear at all.
+        self.assertNotIn("tier_inferred", self.codes())
         for job in self.payroll.period_jobs:
             if job.tier_key in ("standard", "three_to_four"):
-                self.assertTrue(job.rate_basis.startswith("inferred_from_pay"))
+                self.assertEqual(job.rate_basis, "stated_in_export")
 
 
 # =====================================================================
@@ -363,9 +364,10 @@ class TestExtraPayments(PayrollCase):
         self.assertEqual(nina.weeks[0].regular_rate, Decimal("23.0000"))
 
     def test_mileage_on_a_care_com_job(self):
-        # Gwen Mabry: 5 hrs x $23 = $115.00 wages, plus 40 miles at $0.76 = $30.40
+        # Gwen Mabry: 5 hrs x $23 = $115.00 wages, plus an 80-mile round trip.
+        # Policy pays the 40 miles above 40: 40 x $0.76 = $30.40.
         gwen = self.person("Gwen Mabry")
-        self.assertEqual(gwen.mileage_miles, Decimal("40"))
+        self.assertEqual(gwen.mileage_miles, Decimal("80"))
         self.assertEqual(gwen.mileage_amount, money("30.40"))
         self.assertEqual(gwen.taxable_earnings, money("115.00"))
         self.assertEqual(gwen.reimbursements, money("30.40"))
@@ -395,12 +397,14 @@ class TestExtraPayments(PayrollCase):
         self.assertEqual(hana.total_paid, money("259.04"))
 
     def test_the_round_trip_and_the_payable_miles_are_both_recorded(self):
-        # Hana Kimura: $41.04 is a 54-mile round trip, of which 14 are payable.
+        # Hana Kimura: a 94-mile round trip, 54 of them payable, $41.04.
+        # All three come straight from Sitterwise now.
         hana = self.person("Hana Kimura")
         job = next(j for j in hana.jobs if j.mileage_miles)
-        self.assertEqual(job.mileage_miles, Decimal("54"))
-        self.assertEqual(job.mileage_payable_miles, Decimal("14"))
-        self.assertEqual(job.mileage_policy_amount, money("10.64"))
+        self.assertEqual(job.mileage_miles, Decimal("94"))
+        self.assertEqual(job.mileage_payable_miles, Decimal("54"))
+        self.assertEqual(job.mileage_policy_amount, money("41.04"))
+        self.assertTrue(job.mileage_from_export)
 
     def test_mileage_on_a_job_that_does_not_qualify_is_not_paid_as_mileage(self):
         # Faye Nakamura claimed exactly 40 miles - on a Babysitter job.
@@ -410,98 +414,109 @@ class TestExtraPayments(PayrollCase):
         self.assertEqual(faye.other_reimbursement, money("30.40"))
         self.assertIn("mileage_not_allowed", self.codes("Faye Nakamura"))
 
-    def test_a_care_com_claim_under_the_minimum_is_flagged(self):
+    def test_a_trip_too_short_to_qualify_is_flagged(self):
+        # Nadia Okoro drove a 30-mile round trip - under the 40 miles a claim
+        # needs - but $15.20 was paid anyway.
         nadia = self.person("Nadia Okoro")
-        self.assertEqual(nadia.mileage_amount, money("0"))
-        self.assertIn("mileage_under_minimum", self.codes("Nadia Okoro"))
+        job = next(j for j in nadia.jobs if j.mileage_miles)
+        self.assertEqual(job.mileage_miles, Decimal("30"))
+        self.assertEqual(job.mileage_policy_amount, money("0.00"))
+        self.assertIn("mileage_deduction_not_applied", self.codes("Nadia Okoro"))
 
     def test_mileage_larger_than_the_commission_is_flagged(self):
-        # Della Cruz: 100 miles = $76.00 on a job Sitterwise made $48.00 on.
-        self.assertIn("mileage_exceeds_commission", self.codes("Della Cruz"))
+        # Blythe Ferrer: $76.00 of mileage on a 4-hour job Sitterwise made
+        # $48.00 on. The job loses money.
+        self.assertIn("mileage_exceeds_commission", self.codes("Blythe Ferrer"))
 
     def test_the_mileage_rate_follows_the_date_of_the_job(self):
         # The IRS rate changed mid-2026: $0.725 to June 30, $0.76 from July 1.
         self.assertEqual(self.rules.mileage_rate_for(date(2026, 3, 10)), Decimal("0.7250"))
         self.assertEqual(self.rules.mileage_rate_for(date(2026, 8, 10)), Decimal("0.7600"))
+        # The March job is an 80-mile round trip: 40 payable at the older
+        # $0.725 rate is $29.00, and that is what was paid.
         march = next(j for j in self.result.jobs if j.workday == date(2026, 3, 10))
-        self.assertEqual(march.mileage_miles, Decimal("40"))   # $29.00 / $0.725
+        self.assertEqual(march.mileage_payable_miles, Decimal("40"))
+        self.assertEqual(march.mileage_policy_amount, money("29.00"))
 
 
 # =====================================================================
 # the payroll check
 # =====================================================================
 class TestMileagePolicy(PayrollCase):
-    """Only the miles above 40 on a round trip are paid, and anything over 50
-    miles needs approving in advance. Care.com jobs only."""
+    """Care.com jobs only, and only the miles above 40 on a round trip.
+
+    Sitterwise now exports Round Trip Miles, Payable Miles and Mileage Amount,
+    so these are checks against stated figures rather than inferences.
+    """
 
     def test_only_the_miles_above_forty_are_payable(self):
-        for trip, payable in ((40, 0), (45, 5), (55, 15), (68, 28)):
+        for trip, payable in ((40, 0), (45, 5), (55, 15), (80, 40)):
             self.assertEqual(self.rules.payable_miles(Decimal(trip)), Decimal(payable))
 
-    def test_a_forty_mile_round_trip_pays_nothing(self):
-        # Gwen Mabry's $30.40 is exactly 40 miles - the eligibility floor, so
-        # there are no miles above it to pay for.
-        gwen = self.person("Gwen Mabry")
-        job = next(j for j in gwen.jobs if j.mileage_miles)
-        self.assertEqual(job.mileage_miles, Decimal("40"))
-        self.assertEqual(job.mileage_payable_miles, Decimal("0"))
-        self.assertEqual(job.mileage_policy_amount, money("0.00"))
-        self.assertIn("mileage_deduction_not_applied", self.codes("Gwen Mabry"))
+    def test_a_correct_claim_passes_without_comment(self):
+        # Gwen Mabry: 80-mile round trip, 40 payable, $30.40. Exactly policy.
+        self.assertNotIn("mileage_deduction_not_applied", self.codes("Gwen Mabry"))
+        self.assertNotIn("mileage_unverifiable", self.codes("Gwen Mabry"))
 
-    def test_the_claim_is_still_paid_and_the_difference_is_shown(self):
-        # Flagging is not refusing. The exported amount goes through and Amy
-        # decides whether to correct it.
-        gwen = self.person("Gwen Mabry")
-        self.assertEqual(gwen.mileage_amount, money("30.40"))
+    def test_paying_for_the_whole_drive_is_caught(self):
+        # Della Cruz: 60-mile round trip. Policy pays the 20 miles above 40,
+        # which is $15.20 - but $45.60, the whole drive, was paid.
+        della = self.person("Della Cruz")
+        job = next(j for j in della.jobs if j.mileage_miles)
+        self.assertEqual(job.mileage_miles, Decimal("60"))
+        self.assertEqual(job.mileage_policy_amount, money("15.20"))
+        self.assertEqual(job.mileage_amount, money("45.60"))
         finding = next(f for f in self.payroll.findings
                        if f.code == "mileage_deduction_not_applied"
-                       and f.caregiver_name == "Gwen Mabry")
-        self.assertIn("$0.00", finding.detail)
+                       and f.caregiver_name == "Della Cruz")
         self.assertIn("$30.40", finding.detail)
 
+    def test_the_claim_is_still_paid_in_full(self):
+        # Flagging is not refusing. Amy decides whether to correct it.
+        della = self.person("Della Cruz")
+        self.assertEqual(della.mileage_amount, money("45.60"))
+
     def test_over_fifty_miles_needs_advance_approval(self):
-        # Hana Kimura's 54-mile round trip is over the 50-mile line.
+        # Hana Kimura's 94-mile round trip is well over the 50-mile line.
         self.assertIn("mileage_needs_form", self.codes("Hana Kimura"))
 
     def test_a_trip_inside_the_band_does_not_need_a_form(self):
-        # Gwen's 40 miles is inside the 40-50 band submitted at check-out.
-        self.assertNotIn("mileage_needs_form", self.codes("Gwen Mabry"))
-
-    def test_a_trip_under_forty_miles_is_not_mileage_at_all(self):
-        nadia = self.person("Nadia Okoro")
-        self.assertEqual(nadia.mileage_amount, money("0"))
-        self.assertIn("mileage_under_minimum", self.codes("Nadia Okoro"))
+        # Nadia's 30-mile round trip is nowhere near it.
+        self.assertNotIn("mileage_needs_form", self.codes("Nadia Okoro"))
 
     def test_mileage_stays_care_com_only(self):
-        # The policy says Care.com jobs only - not hotels, not other homes.
         faye = self.person("Faye Nakamura")
         self.assertEqual(faye.mileage_amount, money("0"))
         self.assertIn("mileage_not_allowed", self.codes("Faye Nakamura"))
 
 
-class TestMileageAlreadyDeducted(PayrollCase):
-    """The same payroll once Sitterwise takes the 40 miles off before export."""
+class TestMileageWithoutRoundTrip(PayrollCase):
+    """What happens when Sitterwise sends an amount but no round trip.
 
-    rules_overrides = {"reimbursements.mileage.amount_represents": "payable_miles"}
+    The app must not guess how far somebody drove. Reading the amount as
+    either the whole drive or the payable part gives a different answer, and
+    nothing in the data settles which - so it says so instead of accusing
+    anyone of an overpayment.
+    """
 
-    def test_a_correct_claim_passes_without_comment(self):
-        # Pearl Adeyemi's $3.80 is 5 payable miles: a 45-mile round trip,
-        # correctly reimbursed for the 5 miles above 40.
-        pearl = self.person("Pearl Adeyemi")
-        job = next(j for j in pearl.jobs if j.mileage_miles)
-        self.assertEqual(job.mileage_payable_miles, Decimal("5"))
-        self.assertEqual(job.mileage_miles, Decimal("45"))
-        self.assertEqual(job.mileage_policy_amount, money("3.80"))
+    def test_it_says_it_cannot_check_rather_than_claiming_an_overpayment(self):
+        # Pearl Adeyemi: $3.80 of mileage, no Round Trip Miles.
+        self.assertIn("mileage_unverifiable", self.codes("Pearl Adeyemi"))
         self.assertNotIn("mileage_deduction_not_applied", self.codes("Pearl Adeyemi"))
+
+    def test_it_does_not_claim_a_form_was_needed(self):
+        # Without the round trip there is no way to know if it passed 50 miles.
         self.assertNotIn("mileage_needs_form", self.codes("Pearl Adeyemi"))
 
-    def test_small_correct_claims_are_not_mistaken_for_something_else(self):
-        # Under the whole-trip reading, $3.80 looks like a 5-mile trip and gets
-        # rejected as under the minimum. It must not once the deduction is
-        # already applied.
+    def test_the_money_still_goes_through(self):
         pearl = self.person("Pearl Adeyemi")
         self.assertEqual(pearl.mileage_amount, money("3.80"))
-        self.assertEqual(pearl.other_reimbursement, money("0"))
+        self.assertEqual(pearl.total_paid, money("118.80"))     # 5 hrs x $23 + $3.80
+
+    def test_the_finding_asks_for_the_missing_field(self):
+        finding = next(f for f in self.payroll.findings
+                       if f.code == "mileage_unverifiable")
+        self.assertIn("Round Trip Miles", finding.what_to_do)
 
 
 class TestChecks(PayrollCase):
@@ -526,7 +541,7 @@ class TestChecks(PayrollCase):
 
     def test_systemic_gaps_are_raised_once_not_per_job(self):
         # Otherwise a gap in the export drowns out the findings that need action.
-        for code in ("tier_inferred", "reimbursements_no_description"):
+        for code in ("tips_not_recorded", "reimbursements_no_description"):
             matching = [f for f in self.payroll.findings if f.code == code]
             self.assertEqual(len(matching), 1, f"{code} should be raised exactly once")
 
@@ -699,7 +714,8 @@ class TestExports(PayrollCase):
 
     def test_the_detail_export_shows_where_each_rate_came_from(self):
         text = exports.payroll_detail_csv(self.payroll)
-        self.assertIn("Worked out from the amount paid", text)
+        self.assertIn("Rate came from the export", text)
+        self.assertIn("Could not be matched to a rate", text)
 
 
 if __name__ == "__main__":

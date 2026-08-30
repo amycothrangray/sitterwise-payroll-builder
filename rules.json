@@ -101,8 +101,8 @@
       "form_required_above_miles": 50,
       "deduct_first_miles": 40,
       "no_form_band_max_miles": 50,
-      "amount_represents": "whole_trip",
-      "_amount_represents_note": "What the Reimbursement figure in the export actually stands for. 'whole_trip' means the amount covers every mile driven; 'payable_miles' means the 40-mile deduction was already taken off before it was entered. Set to whole_trip because in the August 2026 export all seven mileage claims are over by exactly $30.40 - forty miles at $0.76 - and not one claim falls in the $0.76 to $7.60 range a correct 40-50 mile claim would produce."
+      "amount_represents": "payable_miles",
+      "_amount_represents_note": "What the Reimbursement figure stands for. 'payable_miles' means the 40-mile deduction was already taken off; 'whole_trip' means it covers every mile driven. Set to payable_miles: booking 15175 is described as '83 Miles' and paid $32.68, which is exactly (83 - 40) x $0.76. Nothing in the data supports the other reading. Once Round Trip Miles is populated the app checks properly instead of relying on this setting."
     }
   },
   "payable_statuses": {

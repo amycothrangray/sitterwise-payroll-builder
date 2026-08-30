@@ -485,27 +485,35 @@ def _check_job(job: Job, caregiver: CaregiverPayroll, rules: Rules) -> list[Find
         trip = Decimal(job.mileage_miles)
         rate_used = job.mileage_rate or ZERO
 
-        if rules.deduct_first_miles > 0 and job.mileage_policy_amount is not None:
-            payable = job.mileage_payable_miles
-            should_be = job.mileage_policy_amount
-            if job.mileage_amount > should_be:
-                over = money_value(job.mileage_amount - should_be)
-                out.append(Finding(
-                    "mileage_deduction_not_applied", REVIEW,
-                    f"{name}'s mileage on {_when(job)} looks like the whole drive, not the "
-                    "part that gets paid",
-                    f"Booking {job.booking_id} paid {job.mileage_amount}, which is {trip} miles "
-                    f"at ${rate_used} a mile. Policy pays only the miles above "
-                    f"{rules.deduct_first_miles} on a round trip, so a {trip}-mile round trip "
-                    f"pays {payable} miles - ${should_be}. That is ${over} more than policy.",
-                    f"If {trip} miles was the whole round trip, correct this to ${should_be} as "
-                    "a manual adjustment. If it was already the payable figure, change "
-                    "amount_represents to 'payable_miles' in Settings.",
-                    key, name, [job.booking_id],
-                ))
+        if not job.mileage_from_export:
+            out.append(Finding(
+                "mileage_unverifiable", REVIEW,
+                f"{name}'s mileage on {_when(job)} can't be checked against policy",
+                f"Booking {job.booking_id} paid {job.mileage_amount} of mileage, but Sitterwise "
+                "did not send Round Trip Miles for it, so there is no way to tell how far the "
+                "drive was. Read as the payable figure it works out to a "
+                f"{trip}-mile round trip, but that is an assumption, not a fact.",
+                "Once Round Trip Miles is filled in on the booking the app can check this "
+                "against the 40-mile deduction and the 50-mile approval line properly.",
+                key, name, [job.booking_id],
+            ))
+        elif rules.deduct_first_miles > 0 and job.mileage_policy_amount is not None \
+                and job.mileage_amount > job.mileage_policy_amount:
+            over = money_value(job.mileage_amount - job.mileage_policy_amount)
+            out.append(Finding(
+                "mileage_deduction_not_applied", REVIEW,
+                f"{name}'s mileage on {_when(job)} is more than policy pays",
+                f"Booking {job.booking_id} paid {job.mileage_amount} on a {trip}-mile round trip. "
+                f"Policy pays the {job.mileage_payable_miles} miles above "
+                f"{rules.deduct_first_miles}, which is ${job.mileage_policy_amount} - "
+                f"${over} less.",
+                f"Correct it to {job.mileage_policy_amount} as a manual adjustment if the "
+                "round trip figure is right.",
+                key, name, [job.booking_id],
+            ))
 
         form_above = rules.form_required_above_miles
-        if form_above is not None and trip > form_above:
+        if form_above is not None and trip > form_above and job.mileage_from_export:
             out.append(Finding(
                 "mileage_needs_form", REVIEW,
                 f"{name}'s drive on {_when(job)} needed approving in advance",
