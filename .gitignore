@@ -1,0 +1,9 @@
+# Your payroll history and uploaded exports - local only, never committed
+data/
+
+# Real Sitterwise exports carry client names, emails and phone numbers
+tests/fixtures/real/
+
+__pycache__/
+*.pyc
+.DS_Store
