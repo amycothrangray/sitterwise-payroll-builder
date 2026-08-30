@@ -6,12 +6,15 @@ rebuilt from its original file.
 """
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import mimetypes
 import re
 import shutil
 import threading
+import urllib.error
+import urllib.request
 import webbrowser
 from datetime import date, datetime
 from decimal import Decimal
@@ -544,9 +547,50 @@ class Handler(BaseHTTPRequestHandler):
         })
 
 
+def _payroll_already_on(port: int) -> bool:
+    """True if this app is the thing already holding the port.
+
+    Double-clicking the launcher twice is the common way to hit "address
+    already in use", and the honest answer then is "it is already running",
+    not a stack trace.
+    """
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/state", timeout=2) as resp:
+            if resp.status != 200:
+                return False
+            json.loads(resp.read().decode("utf-8"))
+            return True
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
 def serve(port: int = 8756, open_browser: bool = True, data_path: Path | None = None):
-    Handler.store = Store(data_path)
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    httpd = None
+    for candidate in range(port, port + 10):
+        try:
+            Handler.store = Store(data_path)
+            httpd = ThreadingHTTPServer(("127.0.0.1", candidate), Handler)
+            port = candidate
+            break
+        except OSError as exc:
+            if exc.errno != errno.EADDRINUSE:
+                raise
+            if _payroll_already_on(candidate):
+                url = f"http://127.0.0.1:{candidate}/"
+                print("\n  Sitterwise Payroll is already running.")
+                print(f"  It is open at {url} - no need to start it twice.")
+                print("  You can close this window.\n")
+                if open_browser:
+                    webbrowser.open(url)
+                return
+            # Something else has the port. Try the next one.
+
+    if httpd is None:
+        print("\n  Could not find a free port to run on.")
+        print(f"  Ports {port} to {port + 9} are all taken by something else.")
+        print("  Restarting the Mac clears this. Or run:  python3 run.py --port 9100\n")
+        return
+
     url = f"http://127.0.0.1:{port}/"
     print("\n  Sitterwise Payroll is running.")
     print(f"  Open {url} in your browser.")
