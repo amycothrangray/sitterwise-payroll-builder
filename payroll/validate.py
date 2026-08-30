@@ -122,7 +122,7 @@ def _check_unconfirmed_roster(caregivers: list[CaregiverPayroll],
         "roster_unconfirmed", REVIEW,
         f"{len(unconfirmed)} caregivers have not had their OnPay setup confirmed",
         f"The app added them to the roster itself when it saw them in the export, so it does "
-        f"not yet know whether they can actually be paid. Between them they are owed {owed}. "
+        f"not yet know whether they can actually be paid. Between them they are owed ${owed}. "
         + (", ".join(names[:6]) + (" and others." if len(names) > 6 else ".")),
         "Import your employee list from OnPay on the Roster screen - that sets everyone at "
         "once. Anyone genuinely not in OnPay can be marked so, which will then block payroll.",
@@ -245,7 +245,7 @@ def _check_unclosed_jobs(all_jobs: list[Job], period_start, period_end, rules: R
     return [Finding(
         "not_closed_out", REVIEW,
         f"{len(stragglers)} job{'s' if len(stragglers) != 1 else ''} in this period "
-        "were never closed out",
+        f"{'were' if len(stragglers) != 1 else 'was'} never closed out",
         "These jobs are in the past but are still marked \"confirmed\" in Sitterwise, so "
         f"they are not being paid: {', '.join(names[:8])}"
         + (" and others." if len(names) > 8 else "."),
