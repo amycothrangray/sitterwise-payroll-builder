@@ -238,3 +238,34 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--coral)}
   .bignum{flex-wrap:wrap;gap:10px}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- payroll notes ---------- */
+nav button .pip.quiet{background:var(--teal-pale);color:var(--navy)}
+
+.banner.notes{background:var(--teal-pale);border-color:var(--teal-line);color:var(--ink);
+  border-left:4px solid var(--teal-deep);display:flex;gap:20px;align-items:flex-start;
+  justify-content:space-between;flex-wrap:wrap}
+.banner.notes strong,.banner.warn strong{color:var(--navy)}
+.banner .notelist{margin:8px 0 0;padding-left:20px}
+.banner .notelist li{margin:3px 0}
+
+.noteform{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:14px;
+  margin-top:14px}
+.noteform label{display:flex;flex-direction:column;gap:5px;font-size:12.5px;font-weight:600;
+  color:var(--muted)}
+/* `hidden` is only display:none at the browser's lowest priority, and the
+   rule above outranks it, so the optional fields stayed on screen. */
+.noteform label[hidden]{display:none}
+.noteform input,.noteform select{font:inherit;font-weight:400;color:var(--ink);
+  padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+.noteform input:focus,.noteform select:focus{outline:2px solid var(--teal);outline-offset:-1px;
+  border-color:var(--teal-deep)}
+
+.noterow{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;
+  padding:14px 20px;border-bottom:1px solid var(--line)}
+.noterow:last-child{border-bottom:0}
+.noterow.is-done{opacity:.62}
+.noterow .notemain{min-width:0;flex:1}
+.noterow .notemain>div{margin:2px 0}
+.noteactions{display:flex;gap:8px;flex-shrink:0}
+.notewarn{color:var(--coral-dark);font-size:12.5px;font-weight:600}

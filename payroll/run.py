@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 
+from . import extras
 from .engine import Adjustment, CaregiverPayroll, calculate_caregiver
 from .importer import import_export
 from .model import ImportResult, Job
@@ -193,10 +194,12 @@ def build_run(path, rules: Rules, period_start: date, period_end: date,
               roster: dict[str, RosterEntry] | None = None,
               adjustments: list[Adjustment] | None = None,
               previously_paid: dict[str, str] | None = None,
-              import_result: ImportResult | None = None) -> PayrollRun:
+              import_result: ImportResult | None = None,
+              recurring: list[dict] | None = None) -> PayrollRun:
     result = import_result or import_export(path, rules)
     roster = roster or {}
     adjustments = adjustments or []
+    recurring = recurring or []
 
     in_period = [j for j in result.jobs
                  if j.workday and period_start <= j.workday <= period_end]
@@ -211,11 +214,25 @@ def build_run(path, rules: Rules, period_start: date, period_end: date,
     for adj in adjustments:
         adjustments_by_caregiver[adj.caregiver_key].append(adj)
 
+    # Recurring pay for people the export cannot know about. Somebody who
+    # also worked bookings this week gets it folded into their own payroll so
+    # they end up with one payment, not two; somebody with no bookings at all
+    # gets a line of their own.
+    due = extras.due_in_period(recurring, period_start, period_end)
+    standalone = []
+    for entry in due:
+        line = extras.recurring_payroll(entry, period_start, period_end)
+        if entry["caregiver_key"] in by_caregiver:
+            adjustments_by_caregiver[entry["caregiver_key"]].extend(line.adjustments)
+        else:
+            standalone.append(line)
+
     caregivers = []
     for key, jobs in by_caregiver.items():
         name = next((j.display_name for j in jobs if j.display_name), "")
         caregivers.append(
             calculate_caregiver(name, key, jobs, rules, adjustments_by_caregiver.get(key, [])))
+    caregivers.extend(standalone)
     caregivers.sort(key=lambda c: (c.name == "", c.name.lower()))
 
     findings = run_checks(

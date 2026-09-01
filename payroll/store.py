@@ -82,6 +82,45 @@ CREATE TABLE IF NOT EXISTS audit_log (
     action     TEXT NOT NULL,
     detail     TEXT
 );
+
+-- Things to remember on a future payroll. Replaces the "Payroll Odds &
+-- Ends" spreadsheet. A note is written whenever somebody notices something;
+-- it waits here until the payroll it belongs to is run, and is then applied
+-- as an ordinary adjustment so it lands in the same audit trail as
+-- everything else.
+CREATE TABLE IF NOT EXISTS notes (
+    id             TEXT PRIMARY KEY,
+    created_at     TEXT NOT NULL,
+    created_by     TEXT DEFAULT '',
+    kind           TEXT NOT NULL,
+    caregiver_key  TEXT DEFAULT '',
+    caregiver_name TEXT DEFAULT '',
+    booking_id     TEXT DEFAULT '',
+    amount         TEXT DEFAULT '',
+    taxable        INTEGER DEFAULT 1,
+    detail         TEXT DEFAULT '',
+    applies_to     TEXT DEFAULT 'next',
+    status         TEXT NOT NULL DEFAULT 'open',
+    applied_run_id TEXT DEFAULT '',
+    applied_at     TEXT DEFAULT '',
+    resolved_by    TEXT DEFAULT ''
+);
+
+-- People paid for work that never appears in a bookings export: a monthly
+-- salary, admin hours, phone days, training. Each entry produces its own
+-- payroll line on the periods it is due.
+CREATE TABLE IF NOT EXISTS recurring_pay (
+    id            TEXT PRIMARY KEY,
+    created_at    TEXT NOT NULL,
+    person_name   TEXT NOT NULL,
+    caregiver_key TEXT NOT NULL,
+    amount        TEXT NOT NULL,
+    frequency     TEXT NOT NULL DEFAULT 'monthly',
+    schedule      TEXT NOT NULL DEFAULT 'first_monday',
+    taxable       INTEGER DEFAULT 1,
+    active        INTEGER DEFAULT 1,
+    note          TEXT DEFAULT ''
+);
 """
 
 
@@ -289,3 +328,124 @@ class Store:
             self.log("roster_seeded",
                      f"{added} caregivers added to the roster, awaiting their OnPay status")
         return added
+
+    # -- payroll notes ---------------------------------------------------
+    # The old "Payroll Odds & Ends" sheet, with the retyping taken out. A
+    # note is not a reminder to do arithmetic later; it carries the numbers,
+    # and the run it belongs to applies it.
+    def add_note(self, note: dict) -> str:
+        note_id = note.get("id") or uuid.uuid4().hex[:12]
+        self.db.execute(
+            """INSERT INTO notes (id,created_at,created_by,kind,caregiver_key,
+                                  caregiver_name,booking_id,amount,taxable,detail,
+                                  applies_to,status,applied_run_id,applied_at,resolved_by)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'','','')""",
+            (note_id, note.get("created_at") or now(), note.get("created_by", ""),
+             note["kind"], note.get("caregiver_key", ""), note.get("caregiver_name", ""),
+             note.get("booking_id", ""), str(note.get("amount", "")),
+             int(bool(note.get("taxable", True))), note.get("detail", ""),
+             note.get("applies_to") or "next", note.get("status") or "open"))
+        self.db.commit()
+        who = note.get("caregiver_name") or "no one in particular"
+        self.log("note_added", f"{note['kind']} for {who}: {note.get('detail', '')}")
+        return note_id
+
+    def list_notes(self, status: str | None = None) -> list[dict]:
+        if status:
+            rows = self.db.execute(
+                "SELECT * FROM notes WHERE status=? ORDER BY created_at DESC", (status,))
+        else:
+            rows = self.db.execute("SELECT * FROM notes ORDER BY created_at DESC")
+        return [dict(r) for r in rows]
+
+    def get_note(self, note_id: str) -> dict | None:
+        row = self.db.execute("SELECT * FROM notes WHERE id=?", (note_id,)).fetchone()
+        return dict(row) if row else None
+
+    def update_note(self, note_id: str, fields: dict) -> None:
+        allowed = ("kind", "caregiver_key", "caregiver_name", "booking_id", "amount",
+                   "taxable", "detail", "applies_to", "status")
+        sets, values = [], []
+        for key in allowed:
+            if key in fields:
+                sets.append(f"{key}=?")
+                values.append(int(bool(fields[key])) if key == "taxable"
+                              else str(fields[key]))
+        if not sets:
+            return
+        values.append(note_id)
+        self.db.execute(f"UPDATE notes SET {','.join(sets)} WHERE id=?", values)
+        self.db.commit()
+        self.log("note_edited", f"note {note_id}: {', '.join(sets)}")
+
+    def delete_note(self, note_id: str) -> None:
+        row = self.get_note(note_id)
+        self.db.execute("DELETE FROM notes WHERE id=?", (note_id,))
+        self.db.commit()
+        if row:
+            self.log("note_deleted", f"{row['kind']}: {row['detail']}")
+
+    def mark_note_applied(self, note_id: str, run_id: str, who: str = "") -> None:
+        self.db.execute(
+            "UPDATE notes SET status='applied', applied_run_id=?, applied_at=?, "
+            "resolved_by=? WHERE id=?", (run_id, now(), who, note_id))
+        self.db.commit()
+        self.log("note_applied", f"note {note_id} went into this payroll", run_id)
+
+    def reopen_note(self, note_id: str) -> None:
+        """A run was deleted or unlocked, so its notes are waiting again."""
+        self.db.execute(
+            "UPDATE notes SET status='open', applied_run_id='', applied_at='', "
+            "resolved_by='' WHERE id=?", (note_id,))
+        self.db.commit()
+
+    def notes_for_run(self, run_id: str) -> list[dict]:
+        rows = self.db.execute("SELECT * FROM notes WHERE applied_run_id=?", (run_id,))
+        return [dict(r) for r in rows]
+
+    # -- recurring and non-booking pay -----------------------------------
+    def add_recurring(self, entry: dict) -> str:
+        entry_id = entry.get("id") or uuid.uuid4().hex[:12]
+        self.db.execute(
+            """INSERT INTO recurring_pay (id,created_at,person_name,caregiver_key,amount,
+                                          frequency,schedule,taxable,active,note)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (entry_id, entry.get("created_at") or now(), entry["person_name"],
+             entry["caregiver_key"], str(entry["amount"]),
+             entry.get("frequency", "monthly"), entry.get("schedule", "first_monday"),
+             int(bool(entry.get("taxable", True))), int(bool(entry.get("active", True))),
+             entry.get("note", "")))
+        self.db.commit()
+        self.log("recurring_added",
+                 f"{entry['person_name']}: {entry['amount']} {entry.get('frequency', 'monthly')}")
+        return entry_id
+
+    def list_recurring(self, active_only: bool = False) -> list[dict]:
+        sql = "SELECT * FROM recurring_pay"
+        if active_only:
+            sql += " WHERE active=1"
+        return [dict(r) for r in self.db.execute(sql + " ORDER BY person_name")]
+
+    def update_recurring(self, entry_id: str, fields: dict) -> None:
+        allowed = ("person_name", "caregiver_key", "amount", "frequency", "schedule",
+                   "taxable", "active", "note")
+        sets, values = [], []
+        for key in allowed:
+            if key in fields:
+                sets.append(f"{key}=?")
+                values.append(int(bool(fields[key])) if key in ("taxable", "active")
+                              else str(fields[key]))
+        if not sets:
+            return
+        values.append(entry_id)
+        self.db.execute(f"UPDATE recurring_pay SET {','.join(sets)} WHERE id=?", values)
+        self.db.commit()
+        self.log("recurring_edited", f"{entry_id}: {', '.join(sets)}")
+
+    def delete_recurring(self, entry_id: str) -> None:
+        row = self.db.execute("SELECT * FROM recurring_pay WHERE id=?",
+                              (entry_id,)).fetchone()
+        self.db.execute("DELETE FROM recurring_pay WHERE id=?", (entry_id,))
+        self.db.commit()
+        if row:
+            self.log("recurring_deleted", f"{row['person_name']}: {row['amount']}")

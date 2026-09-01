@@ -91,7 +91,9 @@ function navBar() {
       ['exports', 'Exports'],
     );
   }
-  items.push(['roster', 'Roster'], ['history', 'History'], ['settings', 'Settings']);
+  const open = (S.notes && S.notes.notes.filter(n => n.status === 'open').length) || 0;
+  items.push(['notes', 'Notes' + (open ? `<span class="pip quiet">${open}</span>` : '')],
+             ['roster', 'Roster'], ['history', 'History'], ['settings', 'Settings']);
   $('#nav').innerHTML = items.map(([key, label]) =>
     `<button onclick="go('${key}')" aria-current="${S.view === key}">${label}</button>`).join('');
 }
@@ -105,6 +107,8 @@ async function render() {
   if (needsRun.includes(S.view) && !S.run) { S.view = 'home'; }
   if (S.view === 'home') await loadHome();
   if (S.view === 'roster') S.roster = await api('/api/roster');
+  if (S.view === 'notes' || S.view === 'home') S.notes = await api('/api/notes');
+  if (S.view === 'settings') S.recurring = await api('/api/recurring');
   if (S.view === 'settings') S.settings = await api('/api/settings');
   if (S.view === 'history') S.home = await api('/api/state');
   navBar();
@@ -257,8 +261,39 @@ VIEWS.check = () => {
   const stops = findings.filter(f => f.level === 'stop');
   const reviews = findings.filter(f => f.level === 'review');
   const notes = findings.filter(f => f.level === 'note');
+  const waiting = (S.run.waiting_notes || []).filter(n => n.applies_itself && !n.problem);
+  const manual = (S.run.waiting_notes || []).filter(n => !n.applies_itself || n.problem);
+  const applied = S.run.applied_notes || [];
   return `
   ${runHeader()}
+
+  ${waiting.length ? `
+  <div class="banner notes">
+    <div>
+      <strong>${plural(waiting.length, 'note is', 'notes are')} waiting for this payroll.</strong>
+      <ul class="notelist">
+        ${waiting.map(n => `<li>${esc(n.kind_label)} for ${esc(n.caregiver_name || 'someone')}
+          ${num(n.amount) ? '— ' + noteAmount(n) : ''}
+          ${n.detail ? `<span class="muted">(${esc(n.detail)})</span>` : ''}</li>`).join('')}
+      </ul>
+    </div>
+    <button class="btn btn-primary" onclick="applyNotes()">Add ${waiting.length === 1 ? 'it' : 'them'} to this payroll</button>
+  </div>` : ''}
+
+  ${manual.length ? `
+  <div class="banner warn">
+    <strong>${plural(manual.length, 'note needs', 'notes need')} you to handle ${manual.length === 1 ? 'it' : 'them'} yourself.</strong>
+    <ul class="notelist">
+      ${manual.map(n => `<li>${esc(n.kind_label)}${n.caregiver_name ? ' for ' + esc(n.caregiver_name) : ''}
+        ${n.detail ? `<span class="muted">— ${esc(n.detail)}</span>` : ''}
+        ${n.problem ? `<span class="muted">— ${esc(n.problem)}</span>` : ''}</li>`).join('')}
+    </ul>
+  </div>` : ''}
+
+  ${applied.length ? `<div class="banner good">
+    ${plural(applied.length, 'note is', 'notes are')} already in this payroll.
+    <a href="#/notes">See them</a>.</div>` : ''}
+
   <div class="states" style="margin-bottom:22px">
     <button class="state ready" onclick="showCards('ready')">
       <div class="big">${summary.ready}</div>
@@ -999,6 +1034,8 @@ VIEWS.settings = () => {
       <input type="number" step="0.25" id="minhours" value="${rules.minimum_booking.minimum_hours}"></label>
   </div>
 
+  ${recurringSection()}
+
   <div class="card">
     <h2>Overtime</h2>
     <div class="banner locked">California 8/40 with double time — decided 22 August 2026.
@@ -1099,3 +1136,258 @@ async function pushSettings(payload) {
 
 /* ---------- go ---------- */
 route();
+
+/* =====================================================================
+   NOTES — the old "Payroll Odds & Ends" sheet, without the retyping
+   ===================================================================== */
+const NOTE_HELP = {
+  bonus: 'Extra pay on top of the work. Taxable.',
+  cancellation: 'Paid because a job fell through. Taxable.',
+  extra_pay: 'Any other pay owed. Taxable.',
+  dock: 'Take money off. Enter it as a positive number.',
+  reimbursement: 'Paying somebody back - Trustline, parking. Not taxable, and kept out of overtime.',
+  mileage: 'Mileage owed that the export missed. Not taxable.',
+  hours: 'The hours on a booking were wrong. Needs the booking number.',
+  rate: 'The rate on a booking was wrong. Needs the booking number.',
+  exclude: 'Already paid another way. The app will show this but not act on it.',
+  check: 'Pay by paper check. The app will show this but not act on it.',
+  other: 'Just something to remember.',
+};
+
+VIEWS.notes = () => {
+  const all = (S.notes && S.notes.notes) || [];
+  const kinds = (S.notes && S.notes.kinds) || [];
+  const open = all.filter(n => n.status === 'open');
+  const done = all.filter(n => n.status !== 'open');
+  return `
+  <div class="pagehead">
+    <h1>Payroll notes</h1>
+    <p class="sub">Anything to remember on a payroll. Write it down when you notice it;
+      the payroll it belongs to picks it up.</p>
+  </div>
+
+  <div class="card">
+    <h3>Add a note</h3>
+    <div class="noteform">
+      <label>What kind
+        <select id="nkind" onchange="noteKindChanged()">
+          ${kinds.map(k => `<option value="${k.key}">${esc(k.label)}</option>`).join('')}
+        </select>
+      </label>
+      <label>Who is it about
+        <input type="text" id="nname" placeholder="Caregiver name" list="rosternames">
+      </label>
+      <label id="namountwrap">How much
+        <input type="text" id="namount" placeholder="50.00" inputmode="decimal">
+      </label>
+      <label id="nbookingwrap" hidden>Booking number
+        <input type="text" id="nbooking" placeholder="14595">
+      </label>
+      <label>Which payroll
+        <select id="napplies" onchange="noteKindChanged()">
+          <option value="next">The next one</option>
+          <option value="pick">A particular week…</option>
+        </select>
+      </label>
+      <label id="ndatewrap" hidden>Any date in that week
+        <input type="date" id="ndate">
+      </label>
+    </div>
+    <label style="display:block;margin-top:12px">Why
+      <input type="text" id="ndetail" placeholder="Last minute cancellation by the client"
+             style="width:100%" onkeydown="if(event.key==='Enter')addNote()">
+    </label>
+    <p class="muted" id="nhelp" style="margin:10px 0 0">${esc(NOTE_HELP.bonus)}</p>
+    <div style="margin-top:14px"><button class="btn btn-primary" onclick="addNote()">Add note</button></div>
+  </div>
+
+  <h2 style="margin-top:30px">Waiting (${open.length})</h2>
+  ${open.length ? `<div class="card" style="padding:0">
+    ${open.map(noteRow).join('')}
+  </div>` : '<p class="muted">Nothing waiting. Everything is accounted for.</p>'}
+
+  ${done.length ? `<h2 style="margin-top:30px">Already done (${done.length})</h2>
+  <div class="card" style="padding:0">${done.slice(0, 40).map(noteRow).join('')}</div>` : ''}`;
+};
+
+const noteAmount = (n) =>
+  n.kind === 'hours' ? `${hrs(n.amount)} hours`
+  : n.kind === 'rate' ? `${money(n.amount)}/hour`
+  : money(n.amount);
+
+const noteRow = (n) => `
+  <div class="noterow ${n.status !== 'open' ? 'is-done' : ''}">
+    <div class="notemain">
+      <div><strong>${esc(n.kind_label)}</strong>
+        ${n.caregiver_name ? ` &middot; ${esc(n.caregiver_name)}` : ''}
+        ${num(n.amount) ? ` &middot; ${noteAmount(n)}` : ''}
+        ${n.booking_id ? ` &middot; booking ${esc(n.booking_id)}` : ''}
+      </div>
+      <div class="muted">${esc(n.detail || '')}</div>
+      ${n.problem ? `<div class="notewarn">${esc(n.problem)}</div>` : ''}
+      <div class="faint">
+        written ${esc((n.created_at || '').slice(0, 10))}
+        &middot; ${n.applies_to === 'next' ? 'next payroll' : 'week of ' + esc(n.applies_to)}
+        ${n.status !== 'open' ? ` &middot; went into the payroll on ${esc((n.applied_at || '').slice(0, 10))}` : ''}
+        ${!n.applies_itself && n.status === 'open' ? ' &middot; you will need to do this one yourself' : ''}
+      </div>
+    </div>
+    <div class="noteactions">
+      ${n.status === 'open'
+        ? `<button class="btn btn-sm" onclick="markNoteDone('${n.id}')">Mark done</button>`
+        : `<button class="btn btn-sm" onclick="reopenNote('${n.id}')">Reopen</button>`}
+      <button class="btn btn-sm btn-ghost" onclick="deleteNote('${n.id}')">Delete</button>
+    </div>
+  </div>`;
+
+function noteKindChanged() {
+  const kind = $('#nkind').value;
+  $('#nhelp').textContent = NOTE_HELP[kind] || '';
+  $('#nbookingwrap').hidden = !(kind === 'hours' || kind === 'rate');
+  $('#namountwrap').hidden = (kind === 'exclude' || kind === 'check' || kind === 'other');
+  $('#ndatewrap').hidden = $('#napplies').value !== 'pick';
+  const amount = $('#namount');
+  if (kind === 'hours') amount.placeholder = 'Hours actually worked, e.g. 6';
+  else if (kind === 'rate') amount.placeholder = 'Correct hourly rate, e.g. 28';
+  else amount.placeholder = '50.00';
+}
+
+async function addNote() {
+  const kind = $('#nkind').value;
+  const applies = $('#napplies').value === 'pick' ? ($('#ndate').value || 'next') : 'next';
+  const body = {
+    kind,
+    caregiver_name: $('#nname').value.trim(),
+    amount: $('#namountwrap').hidden ? '' : $('#namount').value.trim(),
+    booking_id: $('#nbookingwrap').hidden ? '' : $('#nbooking').value.trim(),
+    detail: $('#ndetail').value.trim(),
+    applies_to: applies,
+  };
+  if (!body.detail && !body.caregiver_name) { toast('Say who it is about, or what it is.', true); return; }
+  try {
+    await post('/api/notes', body);
+    $('#nname').value = ''; $('#namount').value = '';
+    $('#nbooking').value = ''; $('#ndetail').value = '';
+    S.notes = await api('/api/notes');
+    await render();
+    toast('Note saved.');
+  } catch (e) { toast(e.message, true); }
+}
+
+async function markNoteDone(id) {
+  await post('/api/notes/' + id, { status: 'done' });
+  S.notes = await api('/api/notes'); await render();
+}
+
+async function reopenNote(id) {
+  await post('/api/notes/' + id, { status: 'open' });
+  S.notes = await api('/api/notes'); await render();
+}
+
+async function deleteNote(id) {
+  if (!confirm('Delete this note? The payroll it was for will not know about it.')) return;
+  await del('/api/notes/' + id);
+  S.notes = await api('/api/notes'); await render();
+}
+
+VIEWS.after_notes = () => { noteKindChanged(); };
+
+/* Applying this payroll's waiting notes, from the payroll check screen. */
+async function applyNotes() {
+  try {
+    const res = await post(`/api/runs/${S.runId}/notes/apply`);
+    await refreshRun();
+    if (res.skipped.length) {
+      toast(`${res.applied} added. ${res.skipped.length} still need you.`);
+    } else {
+      toast(`${plural(res.applied, 'note', 'notes')} added to this payroll.`);
+    }
+  } catch (e) { toast(e.message, true); }
+}
+
+/* =====================================================================
+   RECURRING PAY — people the bookings export never sees
+   ===================================================================== */
+function recurringSection() {
+  const entries = (S.recurring && S.recurring.entries) || [];
+  return `
+  <div class="card">
+    <h3>Recurring and non-booking pay</h3>
+    <p class="muted" style="margin:4px 0 14px">People paid for work that never shows up as a
+      booking — a monthly salary, admin hours, phone days, training. Each one gets its own line
+      on the payrolls it is due, with no hours and no overtime behind it.</p>
+
+    ${entries.length ? `<div class="tablewrap">
+      <table><thead><tr><th>Who</th><th>Amount</th><th>How often</th><th>Taxable</th>
+        <th>Active</th><th>Note</th><th></th></tr></thead><tbody>
+      ${entries.map(e => `<tr>
+        <td><strong>${esc(e.person_name)}</strong></td>
+        <td><input type="text" value="${esc(e.amount)}" data-r="amount" style="width:90px"
+             onchange="saveRecurring('${e.id}', this)"></td>
+        <td><select data-r="frequency" onchange="saveRecurring('${e.id}', this)">
+          <option value="monthly" ${e.frequency === 'monthly' ? 'selected' : ''}>Monthly — first Monday</option>
+          <option value="weekly" ${e.frequency === 'weekly' ? 'selected' : ''}>Every payroll</option>
+          <option value="one_off" ${e.frequency === 'one_off' ? 'selected' : ''}>Paused</option>
+        </select></td>
+        <td><input type="checkbox" data-r="taxable" ${Number(e.taxable) ? 'checked' : ''}
+             onchange="saveRecurring('${e.id}', this)"></td>
+        <td><input type="checkbox" data-r="active" ${Number(e.active) ? 'checked' : ''}
+             onchange="saveRecurring('${e.id}', this)"></td>
+        <td><input type="text" value="${esc(e.note || '')}" data-r="note" style="min-width:150px"
+             onchange="saveRecurring('${e.id}', this)"></td>
+        <td><button class="btn btn-sm btn-ghost" onclick="deleteRecurring('${e.id}')">Remove</button></td>
+      </tr>`).join('')}
+      </tbody></table>
+    </div>` : '<p class="muted">Nobody set up yet.</p>'}
+
+    <div class="noteform" style="margin-top:16px">
+      <label>Who <input type="text" id="rname" placeholder="Lissa Trevino"></label>
+      <label>Amount <input type="text" id="ramount" placeholder="1500.00" inputmode="decimal"></label>
+      <label>How often
+        <select id="rfreq">
+          <option value="monthly">Monthly — first Monday</option>
+          <option value="weekly">Every payroll</option>
+        </select>
+      </label>
+      <label>What for <input type="text" id="rnote" placeholder="Monthly salary"></label>
+    </div>
+    <div style="margin-top:12px"><button class="btn" onclick="addRecurring()">Add</button></div>
+  </div>`;
+}
+
+async function addRecurring() {
+  const body = {
+    person_name: $('#rname').value.trim(),
+    amount: $('#ramount').value.trim(),
+    frequency: $('#rfreq').value,
+    schedule: 'first_monday',
+    taxable: true,
+    note: $('#rnote').value.trim(),
+  };
+  try {
+    await post('/api/recurring', body);
+    $('#rname').value = ''; $('#ramount').value = ''; $('#rnote').value = '';
+    S.recurring = await api('/api/recurring'); await render();
+    toast('Added.');
+  } catch (e) { toast(e.message, true); }
+}
+
+async function saveRecurring(id, input) {
+  const row = input.closest('tr');
+  const get = (f) => { const el = row.querySelector(`[data-r="${f}"]`); return el ? el.value : ''; };
+  const on = (f) => { const el = row.querySelector(`[data-r="${f}"]`); return el ? el.checked : false; };
+  try {
+    await post('/api/recurring/' + id, {
+      amount: get('amount'), frequency: get('frequency'), note: get('note'),
+      taxable: on('taxable'), active: on('active'),
+    });
+    S.recurring = await api('/api/recurring');
+    toast('Saved.');
+  } catch (e) { toast(e.message, true); }
+}
+
+async function deleteRecurring(id) {
+  if (!confirm('Remove this person from recurring pay?')) return;
+  await del('/api/recurring/' + id);
+  S.recurring = await api('/api/recurring'); await render();
+}

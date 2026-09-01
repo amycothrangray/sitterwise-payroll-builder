@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import exports
+from . import exports, extras
 from .engine import Adjustment
 from .importer import import_export
 from .roster import (NOT_IN_ONPAY, READY, RosterEntry, STATUS_LABELS,
@@ -85,9 +85,15 @@ def load_run(store: Store, run_id: str):
     rules = Rules.from_snapshot(json.loads(record["rules_snapshot"]))
     result = _cached_import(source, rules)
     roster = store.roster()
+    recurring = store.list_recurring(active_only=True)
     store.ensure_roster_entries(
         [(j.caregiver_key, j.display_name) for j in result.jobs
-         if j.caregiver_key and j.is_payable])
+         if j.caregiver_key and j.is_payable]
+        # Somebody on recurring pay has no bookings, so nothing else would
+        # ever put them on the roster - and without a roster entry they read
+        # as "not in OnPay", which stops payroll rather than asking about it.
+        + [(e["caregiver_key"], e["person_name"]) for e in recurring
+           if e["caregiver_key"]])
     roster = store.roster()
 
     run = build_run(
@@ -98,8 +104,24 @@ def load_run(store: Store, run_id: str):
         adjustments=store.adjustments(run_id),
         previously_paid=store.previously_paid(exclude_run_id=run_id),
         import_result=result,
+        recurring=recurring,
     )
     return record, run, roster
+
+
+def waiting_notes(store: Store, record: dict) -> list[dict]:
+    """Open notes belonging to this payroll.
+
+    A note is either pinned to a pay period or marked "next payroll", which
+    means the next one anybody runs.
+    """
+    start, end = record["period_start"], record["period_end"]
+    out = []
+    for note in store.list_notes("open"):
+        applies = note.get("applies_to") or "next"
+        if applies == "next" or start <= applies <= end:
+            out.append(note)
+    return out
 
 
 def run_payload(store: Store, run_id: str) -> dict:
@@ -134,6 +156,13 @@ def run_payload(store: Store, run_id: str) -> dict:
         "totals": run.totals(),
         "reconciliation": run.reconciliation.to_dict(),
         "findings": [f.to_dict() for f in run.findings],
+        "waiting_notes": [
+            dict(n, kind_label=extras.note_label(n["kind"]),
+                 problem=extras.note_problem(n),
+                 applies_itself=n["kind"] in extras.APPLIES_ITSELF)
+            for n in waiting_notes(store, record)
+        ],
+        "applied_notes": store.notes_for_run(run_id),
         "caregivers": caregivers,
         "excluded_jobs": [j.to_dict() for j in run.excluded_jobs],
         "entered_count": sum(1 for c in run.caregivers if entered.get(c.key)),
@@ -260,6 +289,19 @@ class Handler(BaseHTTPRequestHandler):
             })
         if path == "/api/audit":
             return self._json({"entries": store.audit_trail(query.get("run", [None])[0])})
+        if path == "/api/notes":
+            notes = store.list_notes(query.get("status", [None])[0])
+            for note in notes:
+                note["kind_label"] = extras.note_label(note["kind"])
+                note["problem"] = extras.note_problem(note)
+                note["applies_itself"] = note["kind"] in extras.APPLIES_ITSELF
+            return self._json({
+                "notes": notes,
+                "kinds": [{"key": k, "label": v, "applies_itself": k in extras.APPLIES_ITSELF}
+                          for k, v in extras.NOTE_KINDS.items()],
+            })
+        if path == "/api/recurring":
+            return self._json({"entries": store.list_recurring()})
 
         match = re.fullmatch(r"/api/runs/([0-9a-f]+)", path)
         if match:
@@ -279,6 +321,31 @@ class Handler(BaseHTTPRequestHandler):
 
         return self._error("No such thing here.", 404)
 
+    def _apply_notes(self, run_id):
+        """Carry this payroll's waiting notes into it as adjustments.
+
+        One button, but never a silent one: each note becomes an ordinary
+        adjustment carrying the note's own words, so it shows up in the
+        caregiver's adjustment list and in the audit trail like every other
+        manual change. Notes needing a person's judgement are left alone.
+        """
+        store = self.store
+        self._require_open(run_id)
+        record = store.get_run(run_id)
+        applied, skipped = [], []
+        for note in waiting_notes(store, record):
+            problem = extras.note_problem(note)
+            if note["kind"] not in extras.APPLIES_ITSELF:
+                skipped.append({"note": note, "why": "This one needs you to decide."})
+                continue
+            if problem:
+                skipped.append({"note": note, "why": problem})
+                continue
+            store.add_adjustment(run_id, extras.note_to_adjustment(note))
+            store.mark_note_applied(note["id"], run_id)
+            applied.append(note["id"])
+        return self._json({"ok": True, "applied": len(applied), "skipped": skipped})
+
     def _export(self, run_id, key):
         store = self.store
         _, run, roster = load_run(store, run_id)
@@ -296,6 +363,27 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/upload":
             return self._upload()
+
+        if path == "/api/notes":
+            data = self._json_body()
+            if not data.get("kind"):
+                raise ApiError("Pick what kind of note this is.")
+            name = (data.get("caregiver_name") or "").strip()
+            data["caregiver_name"] = name
+            data["caregiver_key"] = data.get("caregiver_key") or normalise_name(name)
+            note_id = store.add_note(data)
+            return self._json({"ok": True, "id": note_id})
+
+        if path == "/api/recurring":
+            data = self._json_body()
+            name = (data.get("person_name") or "").strip()
+            if not name:
+                raise ApiError("Who is this payment for?")
+            if extras.amount_of(data.get("amount")) == 0:
+                raise ApiError("How much should they be paid?")
+            data["person_name"] = name
+            data["caregiver_key"] = data.get("caregiver_key") or normalise_name(name)
+            return self._json({"ok": True, "id": store.add_recurring(data)})
 
         if path == "/api/runs":
             return self._create_run(self._json_body())
@@ -318,6 +406,20 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError(f"'{entry.status}' is not a status the app knows.")
             store.upsert_roster_entry(entry)
             return self._json({"ok": True, "entry": entry.to_dict()})
+
+        match = re.fullmatch(r"/api/notes/([0-9a-f]+)", path)
+        if match:
+            store.update_note(match.group(1), self._json_body())
+            return self._json({"ok": True})
+
+        match = re.fullmatch(r"/api/recurring/([0-9a-f]+)", path)
+        if match:
+            store.update_recurring(match.group(1), self._json_body())
+            return self._json({"ok": True})
+
+        match = re.fullmatch(r"/api/runs/([0-9a-f]+)/notes/apply", path)
+        if match:
+            return self._apply_notes(match.group(1))
 
         if path == "/api/roster/import":
             return self._import_roster()
@@ -383,6 +485,14 @@ class Handler(BaseHTTPRequestHandler):
                 store.delete_run(match.group(1))
             except ValueError as exc:
                 raise ApiError(str(exc))
+            return self._json({"ok": True})
+        match = re.fullmatch(r"/api/notes/([0-9a-f]+)", path)
+        if match:
+            store.delete_note(match.group(1))
+            return self._json({"ok": True})
+        match = re.fullmatch(r"/api/recurring/([0-9a-f]+)", path)
+        if match:
+            store.delete_recurring(match.group(1))
             return self._json({"ok": True})
         match = re.fullmatch(r"/api/roster/(.+)", path)
         if match:

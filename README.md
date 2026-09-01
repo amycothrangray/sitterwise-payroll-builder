@@ -113,6 +113,50 @@ Imported bookings are never altered.
 
 ---
 
+## Payroll notes
+
+The **Notes** screen replaces the "Payroll Odds & Ends" sheet. When somebody
+notices something during the week — a bonus owed, a caregiver who never
+checked out, a Trustline fee to pay back — they write it down there and then.
+
+The difference from the sheet is that a note carries its own numbers. When the
+payroll it belongs to is run, the check screen says how many notes are waiting
+and one button adds them. Each becomes an ordinary adjustment carrying the
+note's own words, so it shows on the caregiver's card and in the audit trail
+like every other manual change. Nothing is ever added silently.
+
+Notes are typed, because most of what went in the sheet was:
+
+| Kind | What it does |
+|---|---|
+| Bonus, cancellation pay, extra pay | Taxable, paid alongside the work |
+| Reduce pay | Taxable, comes off |
+| Reimbursement, mileage | Not taxable, and kept out of the overtime rate |
+| Hours or rate correction | Corrects one booking — needs its booking number |
+| Paid another way, paper check, plain note | Shown to you, never acted on by the app |
+
+A note only applies itself when it says enough to be applied safely. One with
+no caregiver on it, no amount, or an hours correction with no booking number is
+listed with the reason it is waiting, rather than guessed at.
+
+---
+
+## Recurring and non-booking pay
+
+Some people are paid for work that never appears as a booking: a monthly
+salary, admin hours, phone days, training. Set them up in **Settings →
+Recurring and non-booking pay** and each gets their own payroll line on the
+payrolls they are due, with no hours and no overtime behind it.
+
+Payroll runs weekly, Monday to Sunday, so **monthly** means the one payroll
+whose week contains the first Monday of that month. That is exactly twelve
+payments a year, and a week straddling a month end never pays twice.
+
+Somebody who also worked bookings that week gets it folded into their own
+payroll, so they receive one payment rather than two.
+
+---
+
 ## The roster
 
 Records whether each caregiver is actually set up in OnPay. Caregivers the app
@@ -163,6 +207,7 @@ payroll/             the code
   importer.py        reading a Sitterwise export
   engine.py          hours, rates, overtime, the regular rate
   validate.py        the payroll check
+  extras.py          payroll notes, and pay that is not from a booking
   run.py             putting a payroll together, and reconciling it
   store.py           history, roster, adjustments, audit trail
   exports.py         the CSVs
