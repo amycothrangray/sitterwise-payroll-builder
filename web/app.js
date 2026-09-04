@@ -1345,15 +1345,15 @@ function recurringSection() {
     </div>` : '<p class="muted">Nobody set up yet.</p>'}
 
     <div class="noteform" style="margin-top:16px">
-      <label>Who <input type="text" id="rname" placeholder="Lissa Trevino"></label>
-      <label>Amount <input type="text" id="ramount" placeholder="1500.00" inputmode="decimal"></label>
+      <label>Who <input type="text" id="rname" placeholder="Name"></label>
+      <label>Amount <input type="text" id="ramount" placeholder="0.00" inputmode="decimal"></label>
       <label>How often
         <select id="rfreq">
           <option value="monthly">Monthly — first Monday</option>
           <option value="weekly">Every payroll</option>
         </select>
       </label>
-      <label>What for <input type="text" id="rnote" placeholder="Monthly salary"></label>
+      <label>What for <input type="text" id="rnote" placeholder="What it is for"></label>
     </div>
     <div style="margin-top:12px"><button class="btn" onclick="addRecurring()">Add</button></div>
   </div>`;
