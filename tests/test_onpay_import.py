@@ -243,3 +243,89 @@ class ThePayItemMapping(unittest.TestCase):
         broken = dict(self.mapping)
         broken["tier_pay_ids"] = {"standard": 119, "three_to_four": 1}
         self.assertTrue(exports.onpay_mapping_problems(broken))
+
+
+class NotesForThePayLines(unittest.TestCase):
+    """Ethan typed job dates and family names onto each OnPay payroll line so
+    a caregiver could see what she was being paid for. OnPay's import file has
+    no column for that, so the app works out the wording and it gets typed in.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        rules = Rules.load()
+        first = build_run(FIXTURE, rules, WEEK_START, WEEK_END, recurring=[LISSA])
+        cls.roster = {
+            c.key: RosterEntry(c.key, c.name or "Unnamed", READY,
+                               onpay_clock_user=f"SW{i:03d}")
+            for i, c in enumerate(first.caregivers, 1)}
+        cls.payroll = build_run(FIXTURE, rules, WEEK_START, WEEK_END,
+                                roster=cls.roster, recurring=[LISSA])
+        cls.mapping = exports.load_onpay_mapping()
+
+    def lines(self, name):
+        person = next(c for c in self.payroll.caregivers if c.name == name)
+        return exports.onpay_pay_rows(
+            person, self.roster[person.key].onpay_clock_user, self.mapping)
+
+    def test_the_import_file_has_no_column_for_a_note(self):
+        # If OnPay ever adds one, this is the test that should fail.
+        self.assertNotIn("note", exports.ONPAY_HEADER)
+
+    def test_a_note_never_reaches_the_import_file(self):
+        text, _ = exports.onpay_import_csv(self.payroll, self.roster)
+        for row in csv.reader(io.StringIO(text)):
+            self.assertLessEqual(len(row), len(exports.ONPAY_HEADER))
+
+    def test_the_hours_line_names_the_days_and_families(self):
+        note = next(l["note"] for l in self.lines("Dana Reyes") if l["id"] == "1")
+        self.assertTrue(note)
+        self.assertRegex(note, r"[A-Z][a-z]{2} \d")
+
+    def test_the_overtime_line_says_which_day_it_fell_on(self):
+        note = next(l["note"] for l in self.lines("Dana Reyes") if l["id"] == "2")
+        self.assertRegex(note, r"[A-Z][a-z]{2} \d")
+
+    def test_a_mileage_note_says_the_miles_being_paid_for(self):
+        for caregiver in self.payroll.caregivers:
+            if caregiver.mileage_amount and caregiver.name not in ("June Salter",):
+                lines = [l for l in self.lines(caregiver.name) if l["id"] == "107"]
+                if not lines:
+                    continue
+                self.assertIn("mileage", lines[0]["note"])
+                self.assertIn("paid", lines[0]["note"],
+                              "payable miles, not the round trip")
+                return
+        self.skipTest("no mileage in this week")
+
+    def test_a_salary_note_is_the_human_half_not_the_audit_wording(self):
+        note = self.lines(LISSA["person_name"])[0]["note"]
+        self.assertEqual(note, "Monthly salary")
+        self.assertNotIn("Settings", note)
+
+    def test_every_line_carries_a_note_field_even_when_empty(self):
+        for caregiver in self.payroll.caregivers:
+            for line in self.lines(caregiver.name):
+                self.assertIn("note", line)
+
+    def test_the_lines_sheet_lists_a_row_per_pay_line(self):
+        text = exports.onpay_lines_csv(self.payroll, self.roster)
+        rows = list(csv.DictReader(io.StringIO(text)))
+        self.assertTrue(rows)
+        self.assertIn("Note to type in OnPay", rows[0])
+        self.assertTrue(any(r["Note to type in OnPay"] for r in rows))
+
+    def test_the_lines_sheet_leaves_out_anyone_the_check_stopped(self):
+        text = exports.onpay_lines_csv(self.payroll, self.roster)
+        self.assertNotIn("June Salter", text)
+
+
+class TheReimbursementDescriptionIsKept(unittest.TestCase):
+    """Sitterwise records what a reimbursement was for. The importer mapped
+    that column and then dropped it, so it never reached anything."""
+
+    def test_a_job_has_somewhere_to_put_it(self):
+        import dataclasses
+        from payroll.model import Job
+        names = {f.name for f in dataclasses.fields(Job)}
+        self.assertIn("reimbursement_description", names)

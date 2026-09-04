@@ -180,7 +180,7 @@ missing from OnPay.
 ## Exports
 
 Payroll detail · OnPay entry sheet · Payroll summary · Things needing
-attention · Caregiver detail · OnPay import file.
+attention · Caregiver detail · OnPay lines and notes · OnPay import file.
 
 ### The OnPay import file
 
@@ -217,6 +217,33 @@ wage statement in place of the rates the caregiver actually worked.
 Salary is pay item 1 with a cash amount and no hours, the way OnPay's own
 template writes it. The four-hour minimum rides in the regular row — guarantee
 pay is always the guarantee hours at that tier's rate, so it comes out exact.
+
+### Notes on the pay lines
+
+Ethan used to type the job dates and family names onto each OnPay payroll line
+so a caregiver could see exactly what she was being paid for. **OnPay's import
+file has no column for that** — it is eight columns and none of them carries
+text — so the app works out the wording instead and it gets typed in.
+
+Each pay line gets the note that belongs beside it:
+
+```
+Regular        8.00h @ $23.00   Aug 3 Wall, Aug 5 Congdon
+Overtime       1.00h @ $34.50   Aug 5
+Reimbursement          $76.00   Aug 6 mileage 100 mi paid
+```
+
+They show on the **Enter in OnPay** screen with a copy button on each, and in
+the **OnPay lines and notes** export, which lists every line with its note for
+reading while typing. Mileage notes give the miles actually being *paid for*,
+not the round trip, so "100 mi" beside a 140-mile drive can't read as an
+underpayment.
+
+That screen also shows each line's hours and rate exactly as the import file
+writes them, so entering somebody by hand comes to the same money. Regular
+reads 8 hours rather than 9 for a caregiver with an hour of overtime, because
+OnPay wants the overtime hours on their own line rather than counted twice —
+the screen says so rather than leaving you to work it out.
 
 **Two things never reach the file.** Anyone the payroll check has stopped, and
 anyone with no Clock User. Both are named on screen for entering by hand. The

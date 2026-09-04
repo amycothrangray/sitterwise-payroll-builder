@@ -222,6 +222,8 @@ def _build_job(row_number, cell, rules: Rules, today: date) -> Job:
         tip_was_blank=is_blank(raw_tip),
         reimbursement=money(raw_reimb),
         reimbursement_was_blank=is_blank(raw_reimb),
+        reimbursement_description=str(
+            cell("other_reimbursement_description") or "").strip(),
         bonus=money(cell("bonus")),
         lifesaver_bonus=money(cell("lifesaver_bonus")),
     )

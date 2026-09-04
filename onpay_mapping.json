@@ -29,5 +29,16 @@
     "reimbursement_107": "Excluded from taxable wages on this account - confirmed 4 Sep 2026.",
     "tips": "208 Controlled Tips, not 108 Cash Tips - confirmed 4 Sep 2026.",
     "salary": "Pay item 1 with a cash amount and no hours or rate, as in OnPay's own template."
+  },
+  "pay_item_names": {
+    "_comment": "What each pay item is called in OnPay, so the app can name the line on screen. Change these if you rename a pay item.",
+    "1": "Regular",
+    "2": "Overtime",
+    "22": "Double Overtime",
+    "7": "Bonus",
+    "107": "Reimbursement",
+    "208": "Controlled Tips",
+    "119": "3-4 Children",
+    "17": "Custom 2"
   }
 }

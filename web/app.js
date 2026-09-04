@@ -731,6 +731,31 @@ VIEWS.entry = () => {
 
     <div class="card" style="padding:0">${rows.join('')}</div>
 
+    ${(c.onpay_lines || []).length ? `
+    <div class="card tight" style="margin-top:14px">
+      <h3 style="margin:0 0 4px">The lines to make in OnPay</h3>
+      <p class="muted" style="margin:0 0 4px;font-size:13.5px">Exactly what the import file
+        does, so typing it by hand comes to the same thing. The note is so
+        ${esc(c.name.split(' ')[0])} can see what she is being paid for — OnPay's import
+        file has no room for it, so it is typed onto the line.</p>
+      ${num(c.ot_hours) > 0 || num(c.dt_hours) > 0 ? `
+      <p class="muted" style="margin:0 0 12px;font-size:13px">
+        Regular reads ${hrs(num(c.hours_worked) - num(c.ot_hours) - num(c.dt_hours)
+          + num(c.guarantee_hours))} here rather than ${hrs(c.hours_worked)}, because OnPay
+        wants the overtime hours on their own line rather than counted twice.</p>` : ''}
+      ${c.onpay_lines.map(l => `
+        <div class="payline">
+          <div class="payline-what">
+            <strong>${esc(l.name)}</strong>
+            <span class="faint">${l.hours ? hrs(l.hours) + 'h @ $' + num(l.rate).toFixed(2)
+              + ' · ' : ''}${money(l.amount)}</span>
+          </div>
+          <div class="payline-note">${l.note ? esc(l.note) : '<span class="faint">no note</span>'}</div>
+          ${l.note ? `<button class="btn btn-sm" onclick="copy(${JSON.stringify(l.note)
+            .replace(/"/g, '&quot;')}, this)">Copy</button>` : '<span></span>'}
+        </div>`).join('')}
+    </div>` : ''}
+
     <div class="card tight" style="margin-top:14px">
       <div class="spread"><span class="muted">Total being paid</span>
         <strong style="font-size:1.4rem">${money(c.total_paid)}</strong></div>

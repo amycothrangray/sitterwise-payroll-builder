@@ -137,6 +137,18 @@ def run_payload(store: Store, run_id: str) -> dict:
         data["roster"] = entry.to_dict() if entry else None
         data["findings"] = [f.to_dict() for f in run.findings
                             if f.caregiver_key == caregiver.key]
+        # The OnPay lines, with the note that goes beside each one. OnPay's
+        # import file has no column for a note, so these are typed in.
+        mapping = exports.load_onpay_mapping()
+        data["onpay_lines"] = [{
+            "pay_id": row["id"],
+            "name": exports.onpay_pay_item_name(row["id"], mapping),
+            "hours": str(row["hours"]) if row["hours"] else "",
+            "rate": str(row["rate"]) if row["rate"] else "",
+            "amount": str(exports.onpay_row_total(row)),
+            "note": row.get("note", ""),
+        } for row in exports.onpay_pay_rows(
+            caregiver, entry.onpay_clock_user if entry else "", mapping)]
         caregivers.append(data)
 
     return {

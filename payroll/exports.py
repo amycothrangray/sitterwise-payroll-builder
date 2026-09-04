@@ -241,6 +241,85 @@ def _q(value: Decimal, places: Decimal) -> Decimal:
     return Decimal(value).quantize(places, rounding=ROUND_HALF_UP)
 
 
+def _client_short(name: str) -> str:
+    """The bit of a client's name a caregiver will recognise.
+
+    Ethan wrote last names on OnPay's payroll lines so each caregiver could
+    see what she was being paid for, so that is what these follow.
+    """
+    parts = str(name or "").split()
+    return parts[-1] if parts else ""
+
+
+def _day_label(day) -> str:
+    return f"{day:%b} {day.day}" if day else ""
+
+
+def _jobs_note(jobs) -> str:
+    """"Aug 3 Wall, Aug 5 Congdon" - the dates and families behind the hours."""
+    seen, out = set(), []
+    for job in sorted(jobs, key=lambda j: (j.workday or date.min, j.booking_id)):
+        label = f"{_day_label(job.workday)} {_client_short(job.client_name)}".strip()
+        if label and label not in seen:
+            seen.add(label)
+            out.append(label)
+    return ", ".join(out)
+
+
+def _overtime_note(caregiver, attr: str) -> str:
+    """Which days the overtime actually fell on."""
+    days = []
+    for week in caregiver.weeks:
+        for day in week.days:
+            if getattr(day, attr, ZERO) > 0:
+                days.append(_day_label(day.day))
+    return ", ".join(dict.fromkeys(days))
+
+
+def _reimbursement_note(caregiver) -> str:
+    bits = []
+    for job in caregiver.jobs:
+        if job.mileage_amount:
+            # The payable miles, not the round trip - "100 mi" beside a
+            # 140-mile drive reads as an underpayment.
+            miles = job.mileage_payable_miles or job.mileage_miles
+            bits.append(f"{_day_label(job.workday)} mileage"
+                        + (f" {miles:g} mi paid" if miles else ""))
+        if job.other_reimbursement:
+            what = job.reimbursement_description or "reimbursement"
+            bits.append(f"{_day_label(job.workday)} {what}")
+    for adj in caregiver.adjustments:
+        if not adj.taxable and not adj.booking_id and adj.kind != "recurring_pay":
+            bits.append(_reason_tail(adj.reason))
+    return ", ".join(b for b in dict.fromkeys(bits) if b)
+
+
+def _bonus_note(caregiver) -> str:
+    bits = []
+    for job in caregiver.jobs:
+        if job.bonus or job.lifesaver_bonus:
+            bits.append(f"{_day_label(job.workday)} {_client_short(job.client_name)}".strip())
+    for adj in caregiver.adjustments:
+        if adj.taxable and not adj.booking_id and adj.kind != "recurring_pay":
+            bits.append(_reason_tail(adj.reason))
+    return ", ".join(b for b in dict.fromkeys(bits) if b)
+
+
+def _reason_tail(reason: str) -> str:
+    """The part of an adjustment reason a caregiver would find useful.
+
+    The stored reason is written for the audit trail - "Payroll note from
+    Lissa, 2026-08-04: Late cancellation", "Set up as monthly pay in Settings
+    - Monthly salary". A caregiver only wants the human half.
+    """
+    text = str(reason or "").strip()
+    if ":" in text:
+        return text.split(":", 1)[1].strip()
+    if " - " in text:
+        return text.split(" - ", 1)[1].strip()
+    return text
+
+
 def onpay_pay_rows(caregiver: CaregiverPayroll, emp_num: str,
                    mapping: dict) -> list[dict]:
     """The OnPay pay-item rows for one person.
@@ -263,16 +342,17 @@ def onpay_pay_rows(caregiver: CaregiverPayroll, emp_num: str,
     places = Decimal(1).scaleb(-int(mapping.get("rate_decimals", 4)))
     rows: list[dict] = []
 
-    def hourly(pay_id, hours, rate, ob3=None):
+    def hourly(pay_id, hours, rate, ob3=None, note=""):
         if hours and rate:
             rows.append({"id": str(pay_id), "hours": _q(hours, _Q2),
-                         "rate": _q(rate, places), "cash": None, "ob3": ob3})
+                         "rate": _q(rate, places), "cash": None, "ob3": ob3,
+                         "note": note})
 
-    def cash(pay_id, amount, treat_as_cash=True):
+    def cash(pay_id, amount, treat_as_cash=True, note=""):
         if amount:
             rows.append({"id": str(pay_id), "hours": None, "rate": None,
                          "cash": _q(amount, _Q2), "ob3": None,
-                         "treat_as_cash": treat_as_cash})
+                         "treat_as_cash": treat_as_cash, "note": note})
 
     # Hours, kept per rate tier, with the four-hour minimum folded into the
     # tier that earned it. Guarantee pay is always the guarantee hours at
@@ -291,19 +371,30 @@ def onpay_pay_rows(caregiver: CaregiverPayroll, emp_num: str,
     regular_rate = (caregiver.straight_pay / worked) if worked else ZERO
     ot, dt = caregiver.ot_hours, caregiver.dt_hours
 
+    by_tier: dict[str, list] = {}
+    for job in caregiver.jobs:
+        if job.hours_worked + job.guarantee_hours > 0:
+            by_tier.setdefault(job.tier_key, []).append(job)
+
     if len(buckets) == 1:
         key, bucket = next(iter(buckets.items()))
         hourly(tier_ids.get(key, ids.get("regular", 1)),
-               bucket["hours"] - ot - dt, bucket["rate"])
-        hourly(ids.get("overtime", 2), ot, regular_rate * Decimal("1.5"), ob3=ot)
-        hourly(ids.get("double_overtime", 22), dt, regular_rate * 2, ob3=dt)
+               bucket["hours"] - ot - dt, bucket["rate"],
+               note=_jobs_note(by_tier.get(key, [])))
+        hourly(ids.get("overtime", 2), ot, regular_rate * Decimal("1.5"), ob3=ot,
+               note=_overtime_note(caregiver, "ot_hours"))
+        hourly(ids.get("double_overtime", 22), dt, regular_rate * 2, ob3=dt,
+               note=_overtime_note(caregiver, "dt_hours"))
     elif buckets:
         for key, bucket in sorted(buckets.items(), key=lambda kv: -kv[1]["rate"]):
             hourly(tier_ids.get(key, ids.get("regular", 1)),
-                   bucket["hours"], bucket["rate"])
+                   bucket["hours"], bucket["rate"],
+                   note=_jobs_note(by_tier.get(key, [])))
         # Premium only: the straight time is already in the rows above.
-        hourly(ids.get("overtime", 2), ot, regular_rate * Decimal("0.5"), ob3=ot)
-        hourly(ids.get("double_overtime", 22), dt, regular_rate, ob3=dt)
+        hourly(ids.get("overtime", 2), ot, regular_rate * Decimal("0.5"), ob3=ot,
+               note=_overtime_note(caregiver, "ot_hours"))
+        hourly(ids.get("double_overtime", 22), dt, regular_rate, ob3=dt,
+               note=_overtime_note(caregiver, "dt_hours"))
 
     # Salary and other flat pay. A salaried person has no bookings behind
     # them, so their pay goes on pay item 1 as a cash amount with no hours
@@ -319,16 +410,56 @@ def onpay_pay_rows(caregiver: CaregiverPayroll, emp_num: str,
         else:
             other_taxable += amount
     if salary:
+        note = next((_reason_tail(a.reason) for a in caregiver.adjustments
+                     if a.kind == "recurring_pay"), "")
         rows.append({"id": str(ids.get("regular", 1)), "hours": None, "rate": None,
-                     "cash": _q(salary, _Q2), "ob3": None, "treat_as_cash": False})
+                     "cash": _q(salary, _Q2), "ob3": None, "treat_as_cash": False,
+                     "note": note})
 
-    cash(ids.get("bonus", 7), _q(caregiver.bonus + other_taxable, _Q2))
-    cash(ids.get("tips", 208), caregiver.tips)
-    cash(ids.get("reimbursement", 107), caregiver.reimbursements)
+    cash(ids.get("bonus", 7), _q(caregiver.bonus + other_taxable, _Q2),
+         note=_bonus_note(caregiver))
+    cash(ids.get("tips", 208), caregiver.tips, note=_jobs_note(
+        [j for j in caregiver.jobs if j.tip]))
+    cash(ids.get("reimbursement", 107), caregiver.reimbursements,
+         note=_reimbursement_note(caregiver))
 
     for row in rows:
         row["emp_num"] = emp_num
     return rows
+
+
+def onpay_pay_item_name(pay_id, mapping: dict) -> str:
+    return mapping.get("pay_item_names", {}).get(str(pay_id), f"Pay item {pay_id}")
+
+
+def onpay_lines_csv(run: PayrollRun, roster: dict[str, RosterEntry],
+                    mapping: dict | None = None) -> str:
+    """Every OnPay pay line with the note that belongs beside it.
+
+    OnPay's import file has no column for a note - it is eight columns and
+    none of them carries text. Ethan used to type the job dates and family
+    names onto each payroll line so a caregiver could see what she was being
+    paid for, and that is worth keeping, so the app works the wording out and
+    this is the sheet to read while typing them in.
+    """
+    mapping = mapping or load_onpay_mapping()
+    statuses = run.summary["statuses"]
+    buffer, out = _writer()
+    out.writerow(["Caregiver", "Clock User", "Pay item", "What OnPay calls it",
+                  "Hours", "Rate", "Amount", "Note to type in OnPay"])
+    for caregiver in run.caregivers:
+        entry = roster.get(caregiver.key)
+        emp = entry.onpay_clock_user if entry else ""
+        if statuses.get(caregiver.key) == "blocked":
+            continue
+        for row in onpay_pay_rows(caregiver, emp, mapping):
+            out.writerow([
+                caregiver.name, emp, row["id"],
+                onpay_pay_item_name(row["id"], mapping),
+                _plain(row["hours"]), _plain(row["rate"]),
+                onpay_row_total(row), row.get("note", ""),
+            ])
+    return buffer.getvalue()
 
 
 def onpay_row_total(row: dict) -> Decimal:
@@ -550,6 +681,12 @@ def all_exports(run: PayrollRun, roster: dict[str, RosterEntry],
          "description": "A readable breakdown per caregiver, with the overtime working shown.",
          "filename": f"caregiver-detail-{stamp}.csv",
          "content": caregiver_detail_csv(run, roster)},
+        {"key": "onpay_lines", "name": "OnPay lines and notes",
+         "description": ("Every pay line with the note to type beside it, so each "
+                         "caregiver can see what she is being paid for. OnPay's "
+                         "import file has no room for notes."),
+         "filename": f"onpay-lines-{stamp}.csv",
+         "content": onpay_lines_csv(run, roster)},
         {"key": "onpay_import", "name": "OnPay import file",
          "description": ("Upload this straight into OnPay. One row per pay item, in "
                          "the format OnPay specified."

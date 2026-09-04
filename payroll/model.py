@@ -35,8 +35,14 @@ class Job:
     tip_was_blank: bool
     reimbursement: Decimal
     reimbursement_was_blank: bool
+
     bonus: Decimal
     lifesaver_bonus: Decimal
+
+    # What Sitterwise says the reimbursement was for - "Trustline", "parking".
+    # The importer read this column and dropped it until now. Defaulted, so it
+    # sits with the derived fields rather than breaking the field order.
+    reimbursement_description: str = ""
 
     # --- worked out by the app ----------------------------------------
     hours_worked: Decimal = Decimal("0")     # from start/end, the truth
