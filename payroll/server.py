@@ -399,6 +399,7 @@ class Handler(BaseHTTPRequestHandler):
                 status=data.get("status", NOT_IN_ONPAY),
                 onpay_clock_user=data.get("onpay_clock_user", "").strip(),
                 onpay_employee_id=data.get("onpay_employee_id", "").strip(),
+                onpay_name=data.get("onpay_name", "").strip(),
                 note=data.get("note", "").strip(),
                 source=data.get("source", "manual"),
             )
@@ -635,23 +636,62 @@ class Handler(BaseHTTPRequestHandler):
         if not entries and problems:
             raise ApiError(problems[0])
         existing = self.store.roster()
-        added = updated = 0
+
+        # OnPay knows people by their legal name, which is often not the name
+        # Sitterwise shows - Lissa's OnPay record is Elisabeth R Gray. Matching
+        # on the name alone would make a second roster entry for her and then
+        # report the first one as missing from OnPay. So a Clock User, an
+        # employee id, or a legal name already recorded against somebody all
+        # count as the same person.
+        by_clock = {e.onpay_clock_user.strip().casefold(): key
+                    for key, e in existing.items() if e.onpay_clock_user.strip()}
+        by_emp_id = {e.onpay_employee_id.strip().casefold(): key
+                     for key, e in existing.items() if e.onpay_employee_id.strip()}
+        by_onpay_name = {normalise_name(e.onpay_name): key
+                         for key, e in existing.items() if e.onpay_name.strip()}
+
+        def already_known_as(entry) -> str:
+            for table, value in (
+                (by_clock, entry.onpay_clock_user.strip().casefold()),
+                (by_emp_id, entry.onpay_employee_id.strip().casefold()),
+                (by_onpay_name, entry.caregiver_key),
+            ):
+                if value and value in table:
+                    return table[value]
+            return ""
+
+        added = updated = linked = 0
+        matched_keys = set()
         for entry in entries:
-            if entry.caregiver_key in existing:
-                previous = existing[entry.caregiver_key]
+            onpay_name = entry.display_name
+            key = entry.caregiver_key
+            if key not in existing:
+                other = already_known_as(entry)
+                if other:
+                    # Same person under a different name. Keep the roster entry
+                    # that is already tied to their bookings.
+                    key = other
+                    linked += 1
+            if key in existing:
+                previous = existing[key]
+                entry.caregiver_key = key
+                entry.display_name = previous.display_name
                 entry.note = previous.note
+                if key != previous.caregiver_key or onpay_name != previous.display_name:
+                    entry.onpay_name = onpay_name
                 updated += 1
             else:
                 added += 1
+            matched_keys.add(entry.caregiver_key)
             self.store.upsert_roster_entry(entry, quiet=True)
+
         self.store.log("roster_imported",
-                       f"{target.name}: {added} added, {updated} updated")
+                       f"{target.name}: {added} added, {updated} updated, "
+                       f"{linked} matched under a different name")
         unmatched = sorted(
-            name for key, name in
-            ((e.caregiver_key, e.display_name) for e in existing.values())
-            if key not in {e.caregiver_key for e in entries})
+            e.display_name for key, e in existing.items() if key not in matched_keys)
         return self._json({
-            "ok": True, "added": added, "updated": updated,
+            "ok": True, "added": added, "updated": updated, "linked": linked,
             "problems": problems,
             "not_in_onpay_file": unmatched,
         })

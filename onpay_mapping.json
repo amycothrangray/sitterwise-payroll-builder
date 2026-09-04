@@ -14,10 +14,12 @@
     "tips": 208
   },
   "tier_pay_ids": {
-    "_comment": "Which OnPay pay type carries each Sitterwise rate tier. 'standard' must be 1. Anything else needs its own hourly pay type: 4 is Custom 1, 17 is Custom 2, 118 onwards are Custom 3 and up. Rename it in OnPay so the pay stub reads properly.",
+    "_comment": "Which OnPay pay item carries each Sitterwise rate tier. These are OnPay's internal pay-item IDs, which are NOT the numbers in the 'Custom N' names - 'Custom 1' is id 4, 'Custom 4' is id 119. Check the id, not the name. 'standard' must be 1, and no two tiers may share an id or OnPay will reject the file.",
     "standard": 1,
-    "three_to_four": 4,
-    "unknown": 17
+    "three_to_four": 119,
+    "_three_to_four_note": "Amy renamed OnPay's 'Custom 4' (id 119) to '3-4 Children' on 4 Sep 2026 and confirmed it saved. Custom 1, 2, 3 and 5-13 are still at their default names.",
+    "unknown": 17,
+    "_unknown_note": "A safety net only. A job whose rate the app could not work out stops the payroll check, and anyone stopped is kept out of the import file, so this should never be reached."
   },
   "ob3_qualified_overtime": "all_overtime_hours",
   "rate_decimals": 4,

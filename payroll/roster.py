@@ -43,6 +43,11 @@ class RosterEntry:
     status: str = NOT_IN_ONPAY
     onpay_clock_user: str = ""
     onpay_employee_id: str = ""
+    # Somebody's legal name in OnPay is often not the name Sitterwise shows -
+    # Lissa's OnPay record is under Elisabeth R Gray. Without somewhere to
+    # record that, importing OnPay's employee list makes a second roster
+    # entry for the same person and then reports the first as missing.
+    onpay_name: str = ""
     note: str = ""
     updated_at: str = ""
     source: str = "manual"          # manual | onpay_import

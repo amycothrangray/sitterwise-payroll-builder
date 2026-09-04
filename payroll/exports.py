@@ -337,6 +337,40 @@ def onpay_row_total(row: dict) -> Decimal:
     return _q(row["hours"] * row["rate"], _Q2)
 
 
+def onpay_mapping_problems(mapping: dict) -> list[str]:
+    """Anything wrong with the pay-item mapping itself.
+
+    OnPay's pay items are identified by an internal id, and those ids are not
+    the numbers in the "Custom N" names - "Custom 1" is id 4 and "Custom 4" is
+    id 119. Renaming the wrong one is an easy mistake that would otherwise
+    show up as a pay stub reading "Custom 4", or as a file OnPay rejects.
+    """
+    tiers = {k: v for k, v in mapping.get("tier_pay_ids", {}).items()
+             if not k.startswith("_")}
+    problems = []
+    if tiers.get("standard") != 1:
+        problems.append(
+            f"The standard rate must be OnPay pay item 1, not "
+            f"{tiers.get('standard')!r}. OnPay treats item 1 as regular pay.")
+    seen: dict[int, list[str]] = {}
+    for name, pay_id in tiers.items():
+        seen.setdefault(pay_id, []).append(name)
+    for pay_id, names in seen.items():
+        if len(names) > 1:
+            problems.append(
+                f"{' and '.join(sorted(names))} are both set to OnPay pay item "
+                f"{pay_id}. Somebody who worked both in a week would be in the "
+                "file twice on the same item, which OnPay rejects.")
+    reserved = {v for k, v in mapping.get("pay_ids", {}).items()
+                if k != "regular" and not k.startswith("_")}
+    for name, pay_id in tiers.items():
+        if name != "standard" and pay_id in reserved:
+            problems.append(
+                f"The {name} rate is set to pay item {pay_id}, which is already "
+                "used for overtime, bonuses, tips or reimbursements.")
+    return problems
+
+
 def onpay_import_check(run: PayrollRun, roster: dict[str, RosterEntry],
                        mapping: dict | None = None) -> list[dict]:
     """Anything about the import file worth saying out loud before it is used.
@@ -349,7 +383,8 @@ def onpay_import_check(run: PayrollRun, roster: dict[str, RosterEntry],
     """
     mapping = mapping or load_onpay_mapping()
     statuses = run.summary["statuses"]
-    problems = []
+    problems = [{"caregiver": "", "problem": text}
+                for text in onpay_mapping_problems(mapping)]
     for caregiver in run.caregivers:
         entry = roster.get(caregiver.key)
         emp = entry.onpay_clock_user if entry else ""

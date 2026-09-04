@@ -199,3 +199,47 @@ class OnPayImportFile(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class ThePayItemMapping(unittest.TestCase):
+    """OnPay's pay items are identified by internal id, not by their name.
+
+    'Custom 1' is id 4 and 'Custom 4' is id 119, which is exactly the sort of
+    thing that gets renamed in the wrong place.
+    """
+
+    def setUp(self):
+        self.mapping = exports.load_onpay_mapping()
+        self.tiers = {k: v for k, v in self.mapping["tier_pay_ids"].items()
+                      if not k.startswith("_")}
+
+    def test_the_live_mapping_is_sound(self):
+        self.assertEqual(exports.onpay_mapping_problems(self.mapping), [])
+
+    def test_the_standard_rate_is_onpay_pay_item_1(self):
+        self.assertEqual(self.tiers["standard"], 1)
+
+    def test_the_higher_tier_points_at_the_item_that_was_renamed(self):
+        # Amy renamed OnPay's "Custom 4", whose internal id is 119.
+        self.assertEqual(self.tiers["three_to_four"], 119)
+
+    def test_no_two_tiers_share_a_pay_item(self):
+        ids = list(self.tiers.values())
+        self.assertEqual(len(ids), len(set(ids)))
+
+    def test_a_tier_never_lands_on_a_flat_money_pay_item(self):
+        flat = {self.mapping["pay_ids"][k] for k in ("bonus", "tips", "reimbursement")}
+        for name, pay_id in self.tiers.items():
+            self.assertNotIn(pay_id, flat, name)
+
+    def test_two_tiers_on_one_item_is_reported_not_shipped(self):
+        broken = dict(self.mapping)
+        broken["tier_pay_ids"] = {"standard": 1, "three_to_four": 1}
+        problems = exports.onpay_mapping_problems(broken)
+        self.assertTrue(problems)
+        self.assertIn("OnPay rejects", problems[0])
+
+    def test_the_standard_rate_being_moved_off_item_1_is_reported(self):
+        broken = dict(self.mapping)
+        broken["tier_pay_ids"] = {"standard": 119, "three_to_four": 1}
+        self.assertTrue(exports.onpay_mapping_problems(broken))

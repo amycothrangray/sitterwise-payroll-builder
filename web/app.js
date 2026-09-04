@@ -924,7 +924,7 @@ VIEWS.roster = () => {
 
   <div class="tablewrap tall">
     <table><thead><tr><th>Caregiver</th><th>OnPay status</th><th>Clock User</th>
-      <th>Employee ID</th><th>Note</th><th></th></tr></thead><tbody>
+      <th>Employee ID</th><th>Name in OnPay</th><th>Note</th><th></th></tr></thead><tbody>
     ${list.map(e => `<tr>
       <td><strong>${esc(e.display_name)}</strong></td>
       <td><select onchange="saveRoster('${esc(e.caregiver_key)}', this)" data-f="status">
@@ -934,6 +934,9 @@ VIEWS.roster = () => {
            onchange="saveRoster('${esc(e.caregiver_key)}', this)" style="min-width:130px"></td>
       <td><input type="text" value="${esc(e.onpay_employee_id)}" data-f="onpay_employee_id"
            onchange="saveRoster('${esc(e.caregiver_key)}', this)" style="min-width:110px"></td>
+      <td><input type="text" value="${esc(e.onpay_name || '')}" data-f="onpay_name"
+           placeholder="only if different"
+           onchange="saveRoster('${esc(e.caregiver_key)}', this)" style="min-width:150px"></td>
       <td><input type="text" value="${esc(e.note)}" data-f="note"
            onchange="saveRoster('${esc(e.caregiver_key)}', this)" style="min-width:170px"></td>
       <td class="faint">${esc((e.updated_at || '').slice(0, 10))}</td>
@@ -950,7 +953,8 @@ async function saveRoster(key, input) {
     await post('/api/roster', {
       caregiver_key: key, display_name: entry.display_name,
       status: value('status'), onpay_clock_user: value('onpay_clock_user'),
-      onpay_employee_id: value('onpay_employee_id'), note: value('note'),
+      onpay_employee_id: value('onpay_employee_id'),
+      onpay_name: value('onpay_name'), note: value('note'),
     });
     toast('Saved');
     S.roster = await api('/api/roster');

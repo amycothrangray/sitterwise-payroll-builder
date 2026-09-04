@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS roster (
     status            TEXT NOT NULL,
     onpay_clock_user  TEXT DEFAULT '',
     onpay_employee_id TEXT DEFAULT '',
+    onpay_name        TEXT DEFAULT '',
     note              TEXT DEFAULT '',
     updated_at        TEXT,
     source            TEXT DEFAULT 'manual'
@@ -135,7 +136,24 @@ class Store:
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        self._add_missing_columns()
         self.db.commit()
+
+    def _add_missing_columns(self) -> None:
+        """Bring an older payroll database up to date.
+
+        CREATE TABLE IF NOT EXISTS leaves an existing table alone, so a
+        column added after somebody started using the app has to be added
+        here or their database quietly lacks it.
+        """
+        wanted = {"roster": {"onpay_name": "TEXT DEFAULT ''"}}
+        for table, columns in wanted.items():
+            have = {row["name"] for row in
+                    self.db.execute(f"PRAGMA table_info({table})")}
+            for name, spec in columns.items():
+                if name not in have:
+                    self.db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {spec}")
+                    self.log("database_updated", f"added {table}.{name}")
 
     def close(self) -> None:
         self.db.close()
@@ -279,7 +297,8 @@ class Store:
         return {r["caregiver_key"]: RosterEntry(
             caregiver_key=r["caregiver_key"], display_name=r["display_name"],
             status=r["status"], onpay_clock_user=r["onpay_clock_user"] or "",
-            onpay_employee_id=r["onpay_employee_id"] or "", note=r["note"] or "",
+            onpay_employee_id=r["onpay_employee_id"] or "",
+            onpay_name=r["onpay_name"] or "", note=r["note"] or "",
             updated_at=r["updated_at"] or "", source=r["source"] or "manual",
         ) for r in rows}
 
@@ -289,16 +308,18 @@ class Store:
         entry.updated_at = now()
         self.db.execute(
             """INSERT INTO roster (caregiver_key,display_name,status,onpay_clock_user,
-                                   onpay_employee_id,note,updated_at,source)
-               VALUES (?,?,?,?,?,?,?,?)
+                                   onpay_employee_id,onpay_name,note,updated_at,source)
+               VALUES (?,?,?,?,?,?,?,?,?)
                ON CONFLICT(caregiver_key) DO UPDATE SET
                  display_name=excluded.display_name, status=excluded.status,
                  onpay_clock_user=excluded.onpay_clock_user,
                  onpay_employee_id=excluded.onpay_employee_id,
+                 onpay_name=excluded.onpay_name,
                  note=excluded.note, updated_at=excluded.updated_at,
                  source=excluded.source""",
             (entry.caregiver_key, entry.display_name, entry.status, entry.onpay_clock_user,
-             entry.onpay_employee_id, entry.note, entry.updated_at, entry.source))
+             entry.onpay_employee_id, entry.onpay_name, entry.note, entry.updated_at,
+             entry.source))
         self.db.commit()
         if not quiet and (not existing or existing["status"] != entry.status):
             was = existing["status"] if existing else "not on the roster"

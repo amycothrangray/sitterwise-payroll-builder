@@ -166,6 +166,15 @@ Marking someone **Not in OnPay** is a deliberate act and does block payroll.
 Rather than keeping the same information in two places, export your employee
 list out of OnPay and import it on the Roster screen.
 
+**When OnPay knows somebody by another name.** OnPay holds people under their
+legal name, which is often not the name Sitterwise shows — Lissa's OnPay
+record is Elisabeth R Gray, and married names, preferred names and middle
+initials all do the same thing. The roster keeps a **Name in OnPay** for these,
+and the import matches on Clock User, employee id, or a legal name already
+recorded, before it falls back to the name. Without that, importing OnPay's
+list would add a second entry for the same person and then report the first as
+missing from OnPay.
+
 ---
 
 ## Exports
@@ -215,9 +224,15 @@ app also adds up what OnPay will actually pay from the file and compares it
 with what it worked out itself, so a rounding difference is something you see
 rather than something you find later.
 
-**One setup step in OnPay:** the higher rate tier needs its own hourly pay
-type. Pay type 4 (`Custom 1`) is used by default and works as-is — rename it to
-something like "3-4 Children" so it reads properly on the pay stub.
+**The higher rate tier has its own OnPay pay item:** id **119**, which OnPay
+shows as "Custom 4" and which is renamed "3-4 Children" on this account.
+
+Beware that OnPay's pay items are identified by an internal id, and those ids
+are *not* the numbers in the "Custom N" names — "Custom 1" is id 4 and
+"Custom 4" is id 119. Check the id, not the name. The app checks the mapping
+before it writes a file and says so if two tiers share an item, if the
+standard rate has moved off item 1, or if a tier has landed on a flat-money
+item.
 
 ---
 
