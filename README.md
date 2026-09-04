@@ -173,9 +173,51 @@ list out of OnPay and import it on the Roster screen.
 Payroll detail · OnPay entry sheet · Payroll summary · Things needing
 attention · Caregiver detail · OnPay import file.
 
-The OnPay import file's columns come from `onpay_mapping.json`. OnPay doesn't
-publish its CSV format and has to switch the import on for your account — ask
-their support for both, then set the column names in Settings.
+### The OnPay import file
+
+OnPay switched CSV upload on for this account on 4 September 2026 and sent the
+specification. The file is **one row per pay item**, not one per person, with
+eight fixed columns and numeric pay types. Pay types used: 1 Regular,
+2 Overtime, 22 Double Overtime, 7 Bonus, 107 Reimbursement, 208 Controlled
+Tips. All of that lives in `onpay_mapping.json`.
+
+**One OnPay rule shapes the whole file:** an employee may appear only once on
+pay item 1 and once on pay item 2. So a caregiver who worked two rates in a
+week cannot have both on pay item 1, and the file is written two ways:
+
+*One rate* — the ordinary presentation.
+
+```
+Regular    12.00h @ $23.00
+Overtime    2.00h @ $34.50
+```
+
+*Two rates* — each rate keeps its own row at the rate actually worked, and the
+overtime row carries only the premium, because the straight time is already
+above it.
+
+```
+3-4 Children   5.00h @ $28.00     (a Custom pay type in OnPay)
+Regular        5.00h @ $23.00
+Overtime       2.00h @ $12.75     (half the $25.50 weighted regular rate)
+```
+
+Both come to the same money. The second just doesn't put a blended rate on the
+wage statement in place of the rates the caregiver actually worked.
+
+Salary is pay item 1 with a cash amount and no hours, the way OnPay's own
+template writes it. The four-hour minimum rides in the regular row — guarantee
+pay is always the guarantee hours at that tier's rate, so it comes out exact.
+
+**Two things never reach the file.** Anyone the payroll check has stopped, and
+anyone with no Clock User. Both are named on screen for entering by hand. The
+app also adds up what OnPay will actually pay from the file and compares it
+with what it worked out itself, so a rounding difference is something you see
+rather than something you find later.
+
+**One setup step in OnPay:** the higher rate tier needs its own hourly pay
+type. Pay type 4 (`Custom 1`) is used by default and works as-is — rename it to
+something like "3-4 Children" so it reads properly on the pay stub.
 
 ---
 

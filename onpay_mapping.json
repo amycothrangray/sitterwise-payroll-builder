@@ -1,31 +1,31 @@
 {
-  "_comment": "How the OnPay import file is laid out. OnPay does not publish its column format, and CSV import has to be switched on for your account by OnPay support. Ask them for the exact column names, then change the 'header' values below to match. Nothing else in the app needs to change.",
-  "_how_to_use": "OnPay matches each row to an employee by their Clock User, which you set on the employee's profile under Job. Set each caregiver's Clock User to the same thing you put in their roster entry here.",
-  "_available_values": [
-    "name", "first_name", "last_name", "onpay_clock_user", "onpay_employee_id",
-    "hours_standard", "hours_three_to_four", "pay_standard", "pay_three_to_four",
-    "guarantee_hours", "guarantee_pay", "ot_hours", "ot_premium",
-    "dt_hours", "dt_premium", "premium_pay",
-    "tips", "bonus", "mileage_miles", "mileage_amount", "other_reimbursement",
-    "reimbursement_total", "taxable_earnings", "total_paid",
-    "period_start", "period_end", "blank"
-  ],
+  "_comment": "How the OnPay import file is built. OnPay switched CSV upload on for this account on 4 Sep 2026 and sent the specification these values come from. The file is one row per PAY ITEM, not one row per person, and the pay types are numbers.",
+  "_the_columns": "type, id, emp_num, hours, rate, treat_as_cash, cash_amount, ob3_qualified_ot. type is always 1. emp_num is the Clock User from the employee's OnPay profile (Job tab > Employment > Clock User).",
+  "_the_one_rule_that_shapes_everything": "OnPay allows only ONE row for pay item 1 and ONE for pay item 2 per employee. A caregiver who worked two different rates in a week therefore cannot have both on pay item 1, which is why a second hourly pay type is used for the higher tier.",
+  "_how_overtime_is_written": "Single rate: overtime is a normal row at time and a half, and the regular row holds the remaining hours. Two rates: each rate keeps its own row at its real rate, and the overtime row carries only the premium (half the weighted regular rate), because the straight-time part is already in the rate rows. Both come to the same money - the second just does not hide a rate the caregiver actually worked.",
   "filename": "onpay-import",
-  "identifier_note": "Rows with no Clock User are left out and listed on screen.",
+  "include_header": true,
+  "pay_ids": {
+    "regular": 1,
+    "overtime": 2,
+    "double_overtime": 22,
+    "bonus": 7,
+    "reimbursement": 107,
+    "tips": 208
+  },
+  "tier_pay_ids": {
+    "_comment": "Which OnPay pay type carries each Sitterwise rate tier. 'standard' must be 1. Anything else needs its own hourly pay type: 4 is Custom 1, 17 is Custom 2, 118 onwards are Custom 3 and up. Rename it in OnPay so the pay stub reads properly.",
+    "standard": 1,
+    "three_to_four": 4,
+    "unknown": 17
+  },
+  "ob3_qualified_overtime": "all_overtime_hours",
+  "rate_decimals": 4,
   "skip_rows_without_identifier": true,
-  "columns": [
-    { "header": "Clock User",        "value": "onpay_clock_user" },
-    { "header": "Employee",          "value": "name" },
-    { "header": "Regular Hours",     "value": "hours_standard" },
-    { "header": "3-4 Child Hours",   "value": "hours_three_to_four" },
-    { "header": "Minimum Hours",     "value": "guarantee_hours" },
-    { "header": "Overtime Hours",    "value": "ot_hours" },
-    { "header": "Overtime Premium",  "value": "ot_premium" },
-    { "header": "Double Time Hours", "value": "dt_hours" },
-    { "header": "Double Time Premium", "value": "dt_premium" },
-    { "header": "Tips",              "value": "tips" },
-    { "header": "Bonus",             "value": "bonus" },
-    { "header": "Mileage",           "value": "mileage_amount" },
-    { "header": "Reimbursement",     "value": "other_reimbursement" }
-  ]
+  "_confirmed_with_onpay": {
+    "ob3_qualified_ot": "All overtime hours - confirmed by Amy, 4 Sep 2026.",
+    "reimbursement_107": "Excluded from taxable wages on this account - confirmed 4 Sep 2026.",
+    "tips": "208 Controlled Tips, not 108 Cash Tips - confirmed 4 Sep 2026.",
+    "salary": "Pay item 1 with a cash amount and no hours or rate, as in OnPay's own template."
+  }
 }
