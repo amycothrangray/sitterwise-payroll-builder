@@ -239,6 +239,27 @@ reading while typing. Mileage notes give the miles actually being *paid for*,
 not the round trip, so "100 mi" beside a 140-mile drive can't read as an
 underpayment.
 
+### Putting the notes in — `onpay_notes.py`
+
+Caregivers see these notes on their pay stubs, so they are worth getting in.
+There is no way to send them automatically: OnPay's import file has no column
+for a note, and OnPay has no API that writes payroll. They are typed in.
+
+So after uploading the import file, run:
+
+```
+python3 onpay_notes.py
+```
+
+It takes the latest payroll and walks through every note one at a time, each
+one already on the clipboard — click the note box on that line in OnPay,
+paste, press return, next. It remembers where it got to, so stopping halfway
+costs nothing; `--restart` goes back to the beginning and `--list` just prints
+them all.
+
+It reads the payroll and writes to the clipboard. It cannot change an amount
+and it cannot run payroll — every note is pasted by the person running it.
+
 That screen also shows each line's hours and rate exactly as the import file
 writes them, so entering somebody by hand comes to the same money. Regular
 reads 8 hours rather than 9 for a caregiver with an hour of overtime, because
@@ -284,6 +305,7 @@ contain client names and phone numbers.
 
 ```
 rules.json           every payroll rule
+onpay_notes.py       walks the OnPay line notes onto the clipboard
 onpay_mapping.json   the OnPay import column layout
 payroll/             the code
   money.py           decimal arithmetic, never floating point
