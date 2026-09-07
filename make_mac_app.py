@@ -147,20 +147,36 @@ else
 fi
 cd "$APP_ROOT" || exit 1
 
+# The exact Python that built this application. An application launched from
+# the Dock gets a bare PATH, so a plain "python3" there can be a different
+# interpreter from the one in Terminal - with its own set of installed
+# packages. Using the one that built this removes that whole problem.
+BUILT_PYTHON="__PYTHON__"
 PY=""
-for candidate in python3 /usr/bin/python3 /usr/local/bin/python3 /opt/homebrew/bin/python3; do
-  if command -v "$candidate" >/dev/null 2>&1; then PY="$candidate"; break; fi
+for candidate in "$BUILT_PYTHON" python3 /usr/bin/python3 /usr/local/bin/python3 /opt/homebrew/bin/python3; do
+  if [ -n "$candidate" ] && command -v "$candidate" >/dev/null 2>&1 \
+     && "$candidate" -c "import openpyxl" >/dev/null 2>&1; then
+    PY="$candidate"; break
+  fi
 done
-if [ -z "$PY" ]; then
-  osascript -e 'display alert "Sitterwise Payroll" message "Python 3 is not installed on this Mac. Install it from python.org and try again." as critical'
-  exit 1
-fi
 
-if ! "$PY" -c "import openpyxl" >/dev/null 2>&1; then
-  "$PY" -m pip install --quiet --user openpyxl >/dev/null 2>&1 || {
-    osascript -e 'display alert "Sitterwise Payroll" message "Could not install what the app needs to read spreadsheets. In Terminal, run: python3 -m pip install openpyxl" as critical'
+if [ -z "$PY" ]; then
+  # Nothing has openpyxl yet. Try to add it to the Python that built this.
+  INSTALLER="$BUILT_PYTHON"
+  command -v "$INSTALLER" >/dev/null 2>&1 || INSTALLER="$(command -v python3)"
+  if [ -z "$INSTALLER" ]; then
+    osascript -e 'display alert "Sitterwise Payroll" message "Python 3 is not installed on this Mac. Install it from python.org and try again." as critical'
     exit 1
-  }
+  fi
+  WHY="$("$INSTALLER" -m pip install --user openpyxl 2>&1 | tail -4)"
+  if "$INSTALLER" -c "import openpyxl" >/dev/null 2>&1; then
+    PY="$INSTALLER"
+  else
+    osascript -e "display alert \"Sitterwise Payroll\" message \"Could not set up the spreadsheet reader. In Terminal, run: $INSTALLER -m pip install openpyxl
+
+$WHY\" as critical"
+    exit 1
+  fi
 fi
 
 exec "$PY" run.py
@@ -190,7 +206,9 @@ def build() -> int:
     (APP / "Contents" / "Info.plist").write_bytes(plistlib.dumps(PLIST))
 
     launcher = macos / "Sitterwise Payroll"
-    launcher.write_text(LAUNCHER.replace("__ROOT__", str(ROOT)), encoding="utf-8")
+    launcher.write_text(
+        LAUNCHER.replace("__ROOT__", str(ROOT))
+                .replace("__PYTHON__", sys.executable), encoding="utf-8")
     launcher.chmod(0o755)
 
     print("  Drawing the icon...")
