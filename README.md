@@ -29,6 +29,12 @@ python3 run.py
 python3 make_mac_app.py
 ```
 
+**Keep this folder out of Documents, Desktop and Downloads.** macOS guards
+those: Terminal has your permission to read them, a newly built application
+does not, and payroll starts and stops again with nothing to show for it. The
+home folder is fine — `~/sitterwise-payroll-builder`. The builder checks and
+tells you rather than letting you find out.
+
 Builds **Sitterwise Payroll.app** next to this file, with its own icon. Drag
 it to the Dock or into Applications and payroll starts from there — no
 Terminal window, no command to remember. Quitting the application stops it.

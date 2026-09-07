@@ -236,7 +236,41 @@ PLIST = {
 }
 
 
+# macOS guards these folders. Terminal has your permission to read them;
+# a freshly built application does not, so it cannot even see its own
+# folder - Python fails on os.getcwd() with "Operation not permitted".
+PROTECTED = ("Documents", "Desktop", "Downloads", "Library/Mobile Documents")
+
+
+def protected_folder_warning() -> str:
+    home = Path.home()
+    try:
+        relative = ROOT.relative_to(home)
+    except ValueError:
+        return ""
+    for guarded in PROTECTED:
+        if relative == Path(guarded) or guarded in relative.parts[:len(Path(guarded).parts)]:
+            return guarded
+    parts = relative.parts
+    for guarded in PROTECTED:
+        head = Path(guarded).parts
+        if parts[:len(head)] == head:
+            return guarded
+    return ""
+
+
 def build() -> int:
+    guarded = protected_folder_warning()
+    if guarded:
+        suggested = Path.home() / ROOT.name
+        print(f"\n  This folder is inside {guarded}, which macOS protects.")
+        print("  Terminal can read it; a new application cannot, so payroll would")
+        print("  start and stop again with nothing to show for it.\n")
+        print("  Move it somewhere unprotected first, then run this again:\n")
+        print(f'    mv "{ROOT}" "{suggested}"')
+        print(f'    cd "{suggested}" && python3 make_mac_app.py\n')
+        return 1
+
     shutil.rmtree(APP, ignore_errors=True)
     macos = APP / "Contents" / "MacOS"
     resources = APP / "Contents" / "Resources"
