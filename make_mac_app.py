@@ -129,12 +129,22 @@ def build_icns(png: Path, into: Path) -> bool:
 
 # -- the application -----------------------------------------------------
 
-LAUNCHER = '''#!/bin/bash
+LAUNCHER = r"""#!/bin/bash
 # Starts Sitterwise Payroll.
 #
 # Launched from Finder there is nowhere to print, so everything below is
 # also written to data/app-launch.log. If the application ever fails to
 # start, that file says why.
+
+# Show a message. The text is passed as an argument rather than pasted into
+# the AppleScript, so no amount of quoting in it can break this script.
+alert() {
+  osascript \
+    -e 'on run argv' \
+    -e 'display alert (item 1 of argv) message (item 2 of argv) as critical' \
+    -e 'end run' \
+    "Sitterwise Payroll" "$1" >/dev/null 2>&1
+}
 
 # Where the payroll code lives. If the application is still sitting inside
 # that folder, work it out from here; otherwise fall back to where it was
@@ -146,7 +156,7 @@ if [ -f "$HERE/run.py" ]; then
 elif [ -f "$BUILT_AT/run.py" ]; then
   APP_ROOT="$BUILT_AT"
 else
-  osascript -e 'display alert "Sitterwise Payroll" message "The payroll folder has moved, so this application cannot find it. Open the folder and run make_mac_app.py again." as critical'
+  alert "The payroll folder has moved, so this application cannot find it. Open the folder and run make_mac_app.py again."
   exit 1
 fi
 cd "$APP_ROOT" || exit 1
@@ -162,39 +172,50 @@ exec >> "$LOG" 2>&1
 
 # The exact Python that built this application. An application launched from
 # the Dock gets a bare PATH, so a plain "python3" there can be a different
-# interpreter from the one in Terminal - with its own set of installed
-# packages. Using the one that built this removes that whole problem.
+# interpreter from the one in Terminal, with its own installed packages.
 BUILT_PYTHON="__PYTHON__"
 PY=""
 for candidate in "$BUILT_PYTHON" python3 /usr/bin/python3 /usr/local/bin/python3 /opt/homebrew/bin/python3; do
-  if [ -n "$candidate" ] && command -v "$candidate" >/dev/null 2>&1 \
-     && "$candidate" -c "import openpyxl" >/dev/null 2>&1; then
-    PY="$candidate"; break
+  [ -n "$candidate" ] || continue
+  if ! command -v "$candidate" >/dev/null 2>&1; then
+    echo "  $candidate - not on this machine"
+    continue
   fi
+  WHY="$("$candidate" -c 'import openpyxl' 2>&1)"
+  if [ -z "$WHY" ]; then
+    echo "  $candidate - has openpyxl, using this one"
+    PY="$candidate"
+    break
+  fi
+  echo "  $candidate - no openpyxl: $(echo "$WHY" | tail -1)"
 done
 
 if [ -z "$PY" ]; then
-  # Nothing has openpyxl yet. Try to add it to the Python that built this.
   INSTALLER="$BUILT_PYTHON"
   command -v "$INSTALLER" >/dev/null 2>&1 || INSTALLER="$(command -v python3)"
   if [ -z "$INSTALLER" ]; then
-    osascript -e 'display alert "Sitterwise Payroll" message "Python 3 is not installed on this Mac. Install it from python.org and try again." as critical'
+    alert "Python 3 is not installed on this Mac. Install it from python.org and try again."
     exit 1
   fi
-  WHY="$("$INSTALLER" -m pip install --user openpyxl 2>&1 | tail -4)"
-  if "$INSTALLER" -c "import openpyxl" >/dev/null 2>&1; then
+  echo "  installing openpyxl with $INSTALLER"
+  OUT="$("$INSTALLER" -m pip install --user openpyxl 2>&1 | tail -5)"
+  echo "$OUT"
+  if "$INSTALLER" -c 'import openpyxl' >/dev/null 2>&1; then
     PY="$INSTALLER"
   else
-    osascript -e "display alert \"Sitterwise Payroll\" message \"Could not set up the spreadsheet reader. In Terminal, run: $INSTALLER -m pip install openpyxl
+    alert "Could not set up the spreadsheet reader. In Terminal, run:
 
-$WHY\" as critical"
+$INSTALLER -m pip install openpyxl
+
+$OUT"
     exit 1
   fi
 fi
 
 echo "python: $PY"
 exec "$PY" run.py
-'''
+"""
+
 
 PLIST = {
     "CFBundleName": "Sitterwise Payroll",
