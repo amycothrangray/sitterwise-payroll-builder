@@ -911,9 +911,19 @@ VIEWS.after_exports = async () => {
         </div>
         <a class="btn btn-primary" href="/api/runs/${S.runId}/export/${e.key}">Download</a>
       </div>
-      ${(e.skipped && e.skipped.length) ? `<div class="banner warn" style="margin-top:12px">
-        Left out for having no OnPay Clock User set: ${esc(e.skipped.join(', '))}.
-        Add it on the <a href="#/roster">roster</a>, or enter these by hand.</div>` : ''}
+      ${(e.problems && e.problems.length) ? `<div class="banner warn" style="margin-top:12px">
+        <strong>${plural(e.problems.length, 'person is', 'people are')} not in this file.</strong>
+        Enter ${e.problems.length === 1 ? 'them' : 'them'} in OnPay by hand.
+        <ul class="notelist">
+          ${e.problems.map(pr => `<li><strong>${esc(pr.caregiver || 'A job with no caregiver name')}</strong>
+            &mdash; ${esc(pr.problem)}</li>`).join('')}
+        </ul>
+        <div style="margin-top:8px">Clock Users are set on the
+          <a href="#/roster">roster</a>; anything the check stopped is on the
+          <a href="#/check">payroll check</a>.</div>
+      </div>` : (e.skipped && e.skipped.length) ? `<div class="banner warn" style="margin-top:12px">
+        Not in this file: ${esc(e.skipped.map(n => n || 'a job with no caregiver name').join(', '))}.
+        Enter them in OnPay by hand.</div>` : ''}
     </div>`).join('');
 };
 

@@ -691,7 +691,7 @@ def all_exports(run: PayrollRun, roster: dict[str, RosterEntry],
          "description": ("Upload this straight into OnPay. One row per pay item, in "
                          "the format OnPay specified."
                          + (f" {len(skipped)} not in it - see below."
-                            if skipped else " Everybody is in it.")),
+                            if skipped else " Everybody who can be paid is in it.")),
          "filename": f"onpay-import-{stamp}.csv", "content": onpay_csv,
          "skipped": skipped,
          "problems": onpay_import_check(run, roster)},

@@ -7,3 +7,7 @@ tests/fixtures/real/
 __pycache__/
 *.pyc
 .DS_Store
+
+# The Mac application is built on the machine that uses it - it has that
+# computer's folder path inside it, so it is never shared.
+Sitterwise Payroll.app/

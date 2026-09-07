@@ -23,6 +23,21 @@ From a terminal instead:
 python3 run.py
 ```
 
+### Making it a proper Mac application
+
+```
+python3 make_mac_app.py
+```
+
+Builds **Sitterwise Payroll.app** next to this file, with its own icon. Drag
+it to the Dock or into Applications and payroll starts from there — no
+Terminal window, no command to remember. Quitting the application stops it.
+
+The .app is a small wrapper that starts `run.py`; nothing is copied, so it
+keeps working as this folder is updated. If the folder is ever moved, the
+application says so — run `make_mac_app.py` again to point it at the new
+place.
+
 ---
 
 ## How a payroll goes
@@ -306,6 +321,7 @@ contain client names and phone numbers.
 ```
 rules.json           every payroll rule
 onpay_notes.py       walks the OnPay line notes onto the clipboard
+make_mac_app.py      builds the Mac application and its icon
 onpay_mapping.json   the OnPay import column layout
 payroll/             the code
   money.py           decimal arithmetic, never floating point
