@@ -130,7 +130,11 @@ def build_icns(png: Path, into: Path) -> bool:
 # -- the application -----------------------------------------------------
 
 LAUNCHER = '''#!/bin/bash
-# Starts Sitterwise Payroll. Quitting this application stops it.
+# Starts Sitterwise Payroll.
+#
+# Launched from Finder there is nowhere to print, so everything below is
+# also written to data/app-launch.log. If the application ever fails to
+# start, that file says why.
 
 # Where the payroll code lives. If the application is still sitting inside
 # that folder, work it out from here; otherwise fall back to where it was
@@ -146,6 +150,15 @@ else
   exit 1
 fi
 cd "$APP_ROOT" || exit 1
+
+mkdir -p data
+LOG="$APP_ROOT/data/app-launch.log"
+{
+  echo "--------------------------------------------------------------"
+  echo "$(date '+%Y-%m-%d %H:%M:%S')  starting"
+  echo "folder: $APP_ROOT"
+} >> "$LOG" 2>&1
+exec >> "$LOG" 2>&1
 
 # The exact Python that built this application. An application launched from
 # the Dock gets a bare PATH, so a plain "python3" there can be a different
@@ -179,6 +192,7 @@ $WHY\" as critical"
   fi
 fi
 
+echo "python: $PY"
 exec "$PY" run.py
 '''
 
@@ -193,6 +207,11 @@ PLIST = {
     "CFBundleShortVersionString": "1.0",
     "LSMinimumSystemVersion": "10.15",
     "NSHighResolutionCapable": True,
+    # Payroll runs as a small web server and never opens a Mac window.
+    # Without this, macOS treats it as a GUI application that failed to
+    # start and shuts it down a few seconds later - which is exactly what
+    # happened: launching it from Terminal worked, double-clicking did not.
+    "LSUIElement": True,
 }
 
 
