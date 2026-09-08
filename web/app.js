@@ -134,7 +134,9 @@ VIEWS.home = () => {
       Upload Sitterwise Payroll Export
     </button>
     <div class="hint">or drop the file here — .xlsx or .csv</div>
-    <input type="file" id="file" accept=".xlsx,.xlsm,.csv" hidden>
+    <div class="hint">A pay week that crosses a month end needs both months —
+      pick or drop them both.</div>
+    <input type="file" id="file" accept=".xlsx,.xlsm,.csv" hidden multiple>
   </div>
   <div id="uploadresult"></div>
 
@@ -166,7 +168,7 @@ async function openRun(id) { S.runId = id; S.run = null; go('check', id); }
 
 VIEWS.after_home = () => {
   const drop = $('#drop'), input = $('#file');
-  input.onchange = () => input.files[0] && upload(input.files[0]);
+  input.onchange = () => input.files.length && upload(input.files);
   ['dragenter', 'dragover'].forEach(e => drop.addEventListener(e, ev => {
     ev.preventDefault(); drop.classList.add('over');
   }));
@@ -174,17 +176,26 @@ VIEWS.after_home = () => {
     ev.preventDefault(); drop.classList.remove('over');
   }));
   drop.addEventListener('drop', ev => {
-    const file = ev.dataTransfer.files[0];
-    if (file) upload(file);
+    if (ev.dataTransfer.files.length) upload(ev.dataTransfer.files);
   });
 };
 
-async function upload(file) {
-  $('#uploadresult').innerHTML = `<div class="card"><p class="muted">Reading ${esc(file.name)}…</p></div>`;
+async function upload(files) {
+  const list = Array.from(files.length === undefined ? [files] : files);
+  if (!list.length) return;
+  const names = list.map(f => f.name).join(' and ');
+  $('#uploadresult').innerHTML = `<div class="card"><p class="muted">Reading ${esc(names)}…</p></div>`;
   try {
-    const info = await api('/api/upload', {
-      method: 'POST', headers: { 'X-Filename': encodeURIComponent(file.name) }, body: file,
-    });
+    // Each file after the first is joined to the ones before it, which is
+    // how a pay week that crosses a month end gets both months.
+    let info = null;
+    const earlier = [];
+    for (const file of list) {
+      const headers = { 'X-Filename': encodeURIComponent(file.name) };
+      if (earlier.length) headers['X-Combine-With'] = earlier.map(encodeURIComponent).join('|');
+      info = await api('/api/upload', { method: 'POST', headers, body: file });
+      earlier.push(info.source_path);
+    }
     window._upload = info;
     $('#uploadresult').innerHTML = uploadCard(info);
   } catch (e) {
@@ -194,12 +205,33 @@ async function upload(file) {
 
 function uploadCard(info) {
   const choices = info.period_choices || [];
+  const joined = info.combined;
   return `
   <div class="card" style="margin-top:20px">
     <h2>${esc(info.source_filename)}</h2>
     <p class="sub">${info.jobs} bookings, ${info.payable_jobs} of them payable,
        ${info.caregivers} caregivers, ${esc(info.min_date)} to ${esc(info.max_date)}.</p>
 
+    ${joined ? `<div class="banner notes">
+      <div>
+        <strong>Two months joined for this payroll.</strong>
+        <ul class="notelist">
+          ${joined.parts.map(pt => `<li>${esc(pt.name)} — ${pt.used} of ${pt.rows} bookings
+            ${pt.first_day ? `(${esc(pt.first_day)} to ${esc(pt.last_day)})` : ''}</li>`).join('')}
+        </ul>
+        ${joined.seen_twice.length ? `<div style="margin-top:6px">
+          ${plural(joined.seen_twice.length, 'booking was', 'bookings were')} in both files and
+          counted once: ${esc(joined.seen_twice.slice(0, 8).join(', '))}${
+            joined.seen_twice.length > 8 ? ' and more' : ''}.</div>` : ''}
+        ${joined.disagreements.length ? `<div style="margin-top:6px">
+          <strong>${plural(joined.disagreements.length, 'booking is', 'bookings are')} different
+          between the two files</strong>, so the newer file was used:
+          ${esc(joined.disagreements.slice(0, 5).map(d =>
+            `${d.booking_id} (${d.columns.slice(0, 3).join(', ')})`).join('; '))}.
+          Worth a look before you pay it.</div>` : ''}
+        ${joined.problems.length ? `<div style="margin-top:6px">${esc(joined.problems.join(' '))}</div>` : ''}
+      </div>
+    </div>` : ''}
     ${info.suggested.note ? `<div class="banner warn">${esc(info.suggested.note)}</div>` : ''}
     ${info.missing_columns.length ? `<div class="banner bad">
        This file is missing ${esc(info.missing_columns.join(', '))}, which payroll needs.</div>` : ''}

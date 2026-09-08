@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import exports, extras
+from . import combine, exports, extras
 from .engine import Adjustment
 from .importer import import_export
 from .roster import (NOT_IN_ONPAY, READY, RosterEntry, STATUS_LABELS,
@@ -544,6 +544,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def _upload(self):
         target = self._save_upload()
+
+        # A pay week that crosses a month end needs both months' exports,
+        # because Sitterwise exports a month at a time. Uploading the second
+        # file joins it to the first rather than replacing it.
+        combined = None
+        earlier = [Path(unquote(p)) for p in
+                   (self.headers.get("X-Combine-With") or "").split("|") if p.strip()]
+        earlier = [p for p in earlier if p.exists()]
+        if earlier:
+            result = combine.combine_exports([*earlier, target], UPLOAD_DIR)
+            combined = result.to_dict()
+            self.store.log("exports_combined", result.summary)
+            target = result.path
+
         rules = Rules.load()
         result = _cached_import(target, rules)
         start, end, note = suggest_period(result, rules)
@@ -582,6 +596,7 @@ class Handler(BaseHTTPRequestHandler):
             "suggested": {"start": start.isoformat(), "end": end.isoformat(),
                           "label": period_label(start, end), "note": note},
             "period_choices": choices,
+            "combined": combined,
             "unmapped_columns": result.unmapped_columns,
             "missing_columns": result.missing_columns,
             "parse_errors": result.parse_errors,

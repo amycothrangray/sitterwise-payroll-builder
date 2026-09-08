@@ -54,6 +54,17 @@ so it lists those weeks with the number of jobs in each and pre-selects the
 most recent complete one. Half-months are offered underneath in case you ever
 need to run one.
 
+**When a pay week crosses a month end,** pick or drop *both* months' exports.
+Sitterwise exports a month at a time and payroll runs Monday to Sunday, so the
+week of Monday 31 August 2026 needs one day from August and six from
+September. The app joins them and says what it did — how many bookings came
+from each file, which were in both and counted once, and any booking whose two
+copies disagree, where the newer export is used.
+
+A booking recorded twice inside *one* export is left alone, because that is a
+problem the payroll check reports and hiding it would quietly drop somebody's
+pay.
+
 **2. Payroll check.** Three numbers, in plain English:
 
 ```
@@ -335,6 +346,7 @@ payroll/             the code
   importer.py        reading a Sitterwise export
   engine.py          hours, rates, overtime, the regular rate
   validate.py        the payroll check
+  combine.py         joining two months for a pay week that crosses one
   extras.py          payroll notes, and pay that is not from a booking
   run.py             putting a payroll together, and reconciling it
   store.py           history, roster, adjustments, audit trail
