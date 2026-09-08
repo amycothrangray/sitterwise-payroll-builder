@@ -985,6 +985,19 @@ VIEWS.roster = () => {
     <div id="rosterimport"></div>
   </div>
 
+  <div class="card">
+    <div class="spread">
+      <div>
+        <h3>Clock Users</h3>
+        <p class="muted" style="margin:4px 0 0">OnPay pays on the Clock User, and has no way
+          to load them in bulk — each one is typed into that person's OnPay profile by hand.
+          The app picks the numbers and keeps them, so both ends match.</p>
+      </div>
+      <button class="btn" onclick="assignClockUsers()">Give everyone a number</button>
+    </div>
+    <div id="clockusers"></div>
+  </div>
+
   ${attention.length ? `<div class="banner warn">
     ${plural(attention.length, 'caregiver is', 'caregivers are')} not fully set up:
     ${esc(attention.map(e => e.display_name).join(', '))}.</div>` : ''}
@@ -1038,6 +1051,37 @@ async function saveRoster(key, input) {
     });
     toast('Saved');
     S.roster = await api('/api/roster');
+  } catch (e) { toast(e.message, true); }
+}
+
+// Hand out a Clock User to anybody without one. Nothing already recorded is
+// changed, and a number that has been used is never given to a second person
+// - that would put one caregiver's hours on another one's pay.
+async function assignClockUsers() {
+  if (!confirm('Give a Clock User to every caregiver who has not got one?\n\n'
+      + 'Anyone who already has a number keeps it. You then type each new number '
+      + 'into that person\'s OnPay profile, under Job → Employment → Clock User. '
+      + 'Payroll will not match until you do.')) return;
+  try {
+    const res = await api('/api/roster/clock-users', { method: 'POST' });
+    S.roster = await api('/api/roster');
+    await render();
+    if (!res.assigned.length) {
+      $('#clockusers').innerHTML = `<div class="banner good" style="margin-top:12px">
+        Everybody on the roster already has a Clock User.</div>`;
+      return;
+    }
+    const list = res.assigned.map(a => `${a.name},${a.clock_user}`).join('\n');
+    $('#clockusers').innerHTML = `
+      <div class="banner good" style="margin-top:12px">
+        ${plural(res.assigned.length, 'caregiver', 'caregivers')} given a Clock User${
+          res.already_had_one ? `, ${res.already_had_one} already had one` : ''}.
+        Type each into OnPay under Job → Employment → Clock User.</div>
+      <div class="payline" style="align-items:flex-start">
+        <pre class="payline-note" style="white-space:pre-wrap;margin:0">${esc(list)}</pre>
+        <button class="btn btn-sm" onclick="copy(${JSON.stringify(list)
+          .replace(/"/g, '&quot;')}, this)">Copy</button>
+      </div>`;
   } catch (e) { toast(e.message, true); }
 }
 

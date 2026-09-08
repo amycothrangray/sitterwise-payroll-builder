@@ -443,3 +443,49 @@ def merge_import(existing: dict[str, RosterEntry],
         "not_in_onpay_file": sorted(e.display_name for key, e in existing.items()
                                     if key not in matched),
     }
+
+
+# --- handing out Clock Users -----------------------------------------------
+
+# Where a made-up Clock User starts. Four digits, clear of anything OnPay
+# might use for itself, and short enough to read off a screen and type.
+FIRST_CLOCK_USER = 1001
+
+
+def assign_clock_users(roster: dict[str, RosterEntry],
+                       start: int = FIRST_CLOCK_USER) -> list[RosterEntry]:
+    """Give a Clock User to everybody on the roster who has not got one.
+
+    OnPay confirmed on 8 September 2026 that the payroll import identifies
+    people by Clock User, that it is required, and that there is no way to
+    load them in bulk - each one is typed into that person's OnPay profile by
+    hand. So the numbers are ours to choose, and the app holds the same ones
+    it hands over, rather than somebody keeping a list in two places.
+
+    A Clock User already recorded is never changed and never handed out
+    again, including one belonging to somebody who has left. A number that
+    has been used is spent: giving it to a second person would put one
+    caregiver's hours on another one's pay.
+    """
+    taken = set()
+    for entry in roster.values():
+        number = entry.onpay_clock_user.strip()
+        if number:
+            taken.add(number)
+
+    next_number = start
+    while str(next_number) in taken:
+        next_number += 1
+
+    assigned = []
+    # In the order they are shown, so the list somebody types from reads down
+    # the same way the roster does.
+    for entry in sorted(roster.values(), key=lambda e: e.display_name.casefold()):
+        if entry.onpay_clock_user.strip():
+            continue
+        entry.onpay_clock_user = str(next_number)
+        assigned.append(entry)
+        taken.add(str(next_number))
+        while str(next_number) in taken:
+            next_number += 1
+    return assigned

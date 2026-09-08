@@ -25,8 +25,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from payroll.roster import (DIRECT_DEPOSIT_INCOMPLETE, READY,               # noqa: E402
-                            SETUP_INCOMPLETE, RosterEntry, merge_import,
-                            parse_onpay_employee_export)
+                            SETUP_INCOMPLETE, RosterEntry, assign_clock_users,
+                            merge_import, parse_onpay_employee_export)
 
 COLUMNS = ["Last Name", "First Name", "Middle Name", "Employee Number", "Social",
            "Hire Date", "Termination Date", "Type", "Rate", "Pay Frequency"]
@@ -357,3 +357,67 @@ class FoldingTheExportIntoTheRosterHere(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HandingOutClockUsers(unittest.TestCase):
+    """OnPay confirmed on 8 September 2026 that the payroll import identifies
+    people by Clock User, that it is required, and that there is no bulk
+    import - each one is typed into a profile by hand. So the numbers are
+    ours to choose, and the app has to hold the same ones it hands over."""
+
+    def roster(self, *entries):
+        return {e.caregiver_key: e for e in entries}
+
+    def test_everybody_without_one_gets_a_number(self):
+        roster = self.roster(RosterEntry("a", "Abigail Currie"),
+                             RosterEntry("b", "Beth Jones"))
+        assign_clock_users(roster)
+        self.assertEqual([roster["a"].onpay_clock_user, roster["b"].onpay_clock_user],
+                         ["1001", "1002"])
+
+    def test_a_number_somebody_already_has_is_left_alone(self):
+        roster = self.roster(RosterEntry("a", "Abigail Currie", onpay_clock_user="77"))
+        assign_clock_users(roster)
+        self.assertEqual(roster["a"].onpay_clock_user, "77")
+
+    def test_a_number_in_use_is_never_given_to_a_second_person(self):
+        """Two caregivers on one Clock User puts one person's hours on the
+        other one's pay."""
+        roster = self.roster(RosterEntry("a", "Abigail Currie"),
+                             RosterEntry("c", "Cara Lin", onpay_clock_user="1002"),
+                             RosterEntry("d", "Dana Reyes"),
+                             RosterEntry("e", "Eve Marsh"))
+        assign_clock_users(roster)
+        numbers = [e.onpay_clock_user for e in roster.values()]
+        self.assertEqual(len(numbers), len(set(numbers)))
+        self.assertNotIn("1002", [roster["a"].onpay_clock_user,
+                                  roster["d"].onpay_clock_user,
+                                  roster["e"].onpay_clock_user])
+
+    def test_running_it_twice_changes_nothing(self):
+        roster = self.roster(RosterEntry("a", "Abigail Currie"),
+                             RosterEntry("b", "Beth Jones"))
+        assign_clock_users(roster)
+        before = {k: e.onpay_clock_user for k, e in roster.items()}
+        self.assertEqual(assign_clock_users(roster), [])
+        self.assertEqual({k: e.onpay_clock_user for k, e in roster.items()}, before)
+
+    def test_it_reports_only_the_people_it_changed(self):
+        roster = self.roster(RosterEntry("a", "Abigail Currie", onpay_clock_user="1001"),
+                             RosterEntry("b", "Beth Jones"))
+        self.assertEqual([e.display_name for e in assign_clock_users(roster)],
+                         ["Beth Jones"])
+
+    def test_the_numbers_follow_the_order_the_roster_is_shown_in(self):
+        roster = self.roster(RosterEntry("z", "Zara Quinn"),
+                             RosterEntry("a", "Abigail Currie"))
+        assign_clock_users(roster)
+        self.assertLess(int(roster["a"].onpay_clock_user),
+                        int(roster["z"].onpay_clock_user))
+
+    def test_a_number_belonging_to_somebody_who_left_is_not_recycled(self):
+        roster = self.roster(RosterEntry("gone", "Tess Okafor", status=SETUP_INCOMPLETE,
+                                         onpay_clock_user="1001"),
+                             RosterEntry("new", "Nia Vance"))
+        assign_clock_users(roster)
+        self.assertNotEqual(roster["new"].onpay_clock_user, "1001")

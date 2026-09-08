@@ -28,7 +28,8 @@ from . import combine, exports, extras
 from .engine import Adjustment
 from .importer import import_export
 from .roster import (NOT_IN_ONPAY, READY, RosterEntry, STATUS_LABELS,
-                     merge_import, normalise_name, parse_onpay_employee_export)
+                     assign_clock_users, merge_import, normalise_name,
+                     parse_onpay_employee_export)
 from .rules import DEFAULT_RULES_PATH, Rules, RulesError
 from .run import (build_run, half_month_periods, period_label, suggest_period,
                   weeks_in)
@@ -445,6 +446,26 @@ class Handler(BaseHTTPRequestHandler):
         match = re.fullmatch(r"/api/runs/([0-9a-f]+)/notes/apply", path)
         if match:
             return self._apply_notes(match.group(1))
+
+        if path == "/api/roster/clock-users":
+            # OnPay has no bulk import for Clock Users, so somebody types each
+            # one into a profile by hand. The app picks the numbers and keeps
+            # them, so the two ends cannot drift apart.
+            roster = self.store.roster()
+            assigned = assign_clock_users(roster)
+            for entry in assigned:
+                self.store.upsert_roster_entry(entry, quiet=True)
+            if assigned:
+                self.store.log(
+                    "clock_users_assigned",
+                    ", ".join(f"{e.display_name} {e.onpay_clock_user}" for e in assigned))
+            return self._json({
+                "ok": True,
+                "assigned": [{"name": e.display_name, "clock_user": e.onpay_clock_user}
+                             for e in assigned],
+                "already_had_one": sum(1 for e in roster.values()
+                                       if e.onpay_clock_user.strip()) - len(assigned),
+            })
 
         if path == "/api/roster/import":
             return self._import_roster()
