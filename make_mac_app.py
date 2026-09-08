@@ -15,6 +15,7 @@ run this again to point it at the new place.
 from __future__ import annotations
 
 import math
+import os
 import plistlib
 import shutil
 import struct
@@ -271,11 +272,14 @@ def build() -> int:
         print(f'    cd "{suggested}" && python3 make_mac_app.py\n')
         return 1
 
-    shutil.rmtree(APP, ignore_errors=True)
+    # Update the bundle in place rather than deleting and remaking it. The
+    # Dock remembers the application it was given, not just the path, so
+    # replacing the bundle leaves a dead tile that says "Sitterwise Payroll
+    # is not open anymore" - which is what happened after the first rebuild.
     macos = APP / "Contents" / "MacOS"
     resources = APP / "Contents" / "Resources"
-    macos.mkdir(parents=True)
-    resources.mkdir(parents=True)
+    macos.mkdir(parents=True, exist_ok=True)
+    resources.mkdir(parents=True, exist_ok=True)
 
     (APP / "Contents" / "Info.plist").write_bytes(plistlib.dumps(PLIST))
 
@@ -294,6 +298,10 @@ def build() -> int:
     else:
         icon = ("without an icon - build it on a Mac to get one, or the "
                 "generic application icon will show")
+
+    # Finder caches what it knows about an application. Marking the bundle as
+    # changed is what makes it pick up a new icon without a logout.
+    os.utime(APP, None)
 
     print(f"\n  Made {APP.name}, {icon}.")
     print(f"  It is in {ROOT}\n")
