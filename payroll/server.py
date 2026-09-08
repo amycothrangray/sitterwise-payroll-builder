@@ -12,7 +12,9 @@ import json
 import mimetypes
 import re
 import shutil
+import socket
 import threading
+import time
 import urllib.error
 import urllib.request
 import webbrowser
@@ -196,6 +198,7 @@ def run_payload(store: Store, run_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 class Handler(BaseHTTPRequestHandler):
+    httpd = None            # set by serve(), so the app can be asked to stop
     server_version = "SitterwisePayroll"
     store: Store = None            # set on the server instance
 
@@ -248,6 +251,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if unquote(parsed.path) == "/api/stop":
+            # A newly launched copy asking this one to step aside. The server
+            # only listens on this machine, so the only thing that can ask is
+            # something already running on it.
+            self._json({"ok": True})
+            if self.httpd is not None:
+                threading.Thread(target=self.httpd.shutdown, daemon=True).start()
+            return
         try:
             return self._api_post(unquote(parsed.path))
         except ApiError as exc:
@@ -286,6 +297,7 @@ class Handler(BaseHTTPRequestHandler):
                 "roster_count": len(roster),
                 "roster_needing_attention": sum(1 for e in roster.values() if e.needs_attention),
                 "rules_version": Rules.load().version,
+                "build": BUILD,
             })
         if path == "/api/roster":
             return self._json({
@@ -672,6 +684,59 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"ok": True, "problems": problems, **report})
 
 
+def build_id() -> str:
+    """Which copy of the code this is, as the short commit it was built from.
+
+    Payroll is updated by pulling this folder, and until now there was no way
+    to tell from the app whether the copy answering you was the one you just
+    pulled. Read straight out of .git rather than by running git, so it costs
+    nothing and works when git is not installed.
+    """
+    root = Path(__file__).resolve().parent.parent
+    try:
+        head = (root / ".git" / "HEAD").read_text(encoding="utf-8").strip()
+        if head.startswith("ref: "):
+            head = (root / ".git" / head[5:]).read_text(encoding="utf-8").strip()
+        return head[:7]
+    except OSError:
+        return ""
+
+
+BUILD = build_id()
+
+
+def _running_build(port: int) -> str | None:
+    """The build the app on this port is running, or None if that is not us."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/state", timeout=2) as resp:
+            if resp.status != 200:
+                return None
+            return str(json.loads(resp.read().decode("utf-8")).get("build", ""))
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+
+
+def _ask_to_stop(port: int) -> bool:
+    """Ask the copy already running to stop, and wait for the port to free.
+
+    Double-clicking the app after pulling an update used to reach the copy
+    already running and open that instead - so an update could be pulled,
+    the app relaunched, and the old code still be the thing answering. A new
+    launch now takes over from an old one.
+    """
+    try:
+        request = urllib.request.Request(f"http://127.0.0.1:{port}/api/stop", method="POST")
+        urllib.request.urlopen(request, timeout=3).read()
+    except (urllib.error.URLError, OSError):
+        pass                      # an older copy has no way to be asked
+    for _ in range(40):           # up to four seconds for the port to come free
+        with socket.socket() as probe:
+            if probe.connect_ex(("127.0.0.1", port)) != 0:
+                return True
+        time.sleep(0.1)
+    return False
+
+
 def _payroll_already_on(port: int) -> bool:
     """True if this app is the thing already holding the port.
 
@@ -700,15 +765,33 @@ def serve(port: int = 8756, open_browser: bool = True, data_path: Path | None = 
         except OSError as exc:
             if exc.errno != errno.EADDRINUSE:
                 raise
-            if _payroll_already_on(candidate):
+            running = _running_build(candidate)
+            if running is None:
+                continue          # something else has the port; try the next one
+            if running == BUILD and BUILD:
                 url = f"http://127.0.0.1:{candidate}/"
-                print("\n  Sitterwise Payroll is already running.")
+                print("\n  Sitterwise Payroll is already running, on this same version.")
                 print(f"  It is open at {url} - no need to start it twice.")
                 print("  You can close this window.\n")
                 if open_browser:
                     webbrowser.open(url)
                 return
-            # Something else has the port. Try the next one.
+            # A different copy of the code is answering - almost always an
+            # older one still running from before an update was pulled. Opening
+            # it would quietly hand back the old app, which is exactly how an
+            # update could look installed and not be. Take the port instead.
+            print("\n  An older copy of payroll is running. Stopping it first.")
+            if not _ask_to_stop(candidate):
+                print("  It would not stop. In Terminal, run:  pkill -f run.py")
+                print("  then start payroll again.\n")
+                return
+            try:
+                Handler.store = Store(data_path)
+                httpd = ThreadingHTTPServer(("127.0.0.1", candidate), Handler)
+                port = candidate
+                break
+            except OSError:
+                continue
 
     if httpd is None:
         print("\n  Could not find a free port to run on.")
@@ -716,8 +799,9 @@ def serve(port: int = 8756, open_browser: bool = True, data_path: Path | None = 
         print("  Restarting the Mac clears this. Or run:  python3 run.py --port 9100\n")
         return
 
+    Handler.httpd = httpd
     url = f"http://127.0.0.1:{port}/"
-    print("\n  Sitterwise Payroll is running.")
+    print("\n  Sitterwise Payroll is running." + (f"  (version {BUILD})" if BUILD else ""))
     print(f"  Open {url} in your browser.")
     print("  Leave this window open while you work. Close it when you are done.\n")
     if open_browser:
