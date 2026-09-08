@@ -93,6 +93,7 @@ _ID_HEADERS = {"employeeid", "id", "employeenumber", "empid", "empnum"}
 _STATUS_HEADERS = {"status", "employmentstatus", "employeestatus", "active"}
 _END_HEADERS = {"terminationdate", "termdate", "enddate", "separationdate"}
 _RATE_HEADERS = {"rate", "payrate", "hourlyrate", "primaryrate"}
+_HIRE_HEADERS = {"hiredate", "startdate", "datehired"}
 _TYPE_HEADERS = {"type", "paytype", "employmenttype"}
 _FREQUENCY_HEADERS = {"payfrequency", "frequency", "payperiod"}
 _DD_HEADERS = {
@@ -171,7 +172,7 @@ def _sheets(path: Path) -> list[tuple[str, list[str], list[dict]]]:
     return [("", header, [dict(zip(header, r)) for r in body])]
 
 
-def _one_row_each(found: list[tuple[RosterEntry, bool]],
+def _one_row_each(found: list[tuple[RosterEntry, bool, str]],
                   problems: list[str]) -> tuple[list[RosterEntry], list[str]]:
     """Cut the file down to one row per person, or say why it could not be.
 
@@ -182,14 +183,14 @@ def _one_row_each(found: list[tuple[RosterEntry, bool]],
     either of them from a name, so they are left for a person and said out
     loud rather than matched to whichever came first.
     """
-    grouped: dict[str, list[tuple[RosterEntry, bool]]] = {}
-    for entry, has_left in found:
-        grouped.setdefault(entry.caregiver_key, []).append((entry, has_left))
+    grouped: dict[str, list[tuple[RosterEntry, bool, str]]] = {}
+    for entry, has_left, told_apart_by in found:
+        grouped.setdefault(entry.caregiver_key, []).append((entry, has_left, told_apart_by))
 
     entries: list[RosterEntry] = []
     ambiguous: list[str] = []
     for rows in grouped.values():
-        here = [entry for entry, has_left in rows if not has_left]
+        here = [entry for entry, has_left, _ in rows if not has_left]
         if len(rows) == 1:
             entries.append(rows[0][0])
         elif len(here) == 1:
@@ -198,14 +199,19 @@ def _one_row_each(found: list[tuple[RosterEntry, bool]],
                           "under this name.").strip()
             entries.append(entry)
         else:
-            ambiguous.append(rows[0][0].display_name)
+            # Say what actually differs. Being told two people share a name
+            # only sends somebody back to OnPay to find out which is which.
+            told = [t for _, _, t in rows if t]
+            ambiguous.append(f"{rows[0][0].display_name}"
+                             + (f" ({'; '.join(told)})" if told else ""))
 
     if ambiguous:
-        names = ", ".join(sorted(ambiguous))
         problems.append(
-            f"More than one person is in this file under {'this name' if len(ambiguous) == 1 else 'each of these names'}"
-            f": {names}. Nothing was filled in for them - match them up by hand "
-            "so nobody is paid at the other one's rate.")
+            f"More than one person is in this file under "
+            f"{'this name' if len(ambiguous) == 1 else 'each of these names'}: "
+            f"{', '.join(sorted(ambiguous))}. Nothing was filled in for them - "
+            "say which is which on their row so nobody is paid at the other "
+            "one's rate.")
     return entries, problems
 
 
@@ -225,7 +231,9 @@ def parse_onpay_employee_export(path: Path | str) -> tuple[list[RosterEntry], li
             "'Last name'."
         ]
 
-    found: list[tuple[RosterEntry, bool]] = []      # and whether they have left
+    # each person, whether they have left, and what tells them apart from
+    # somebody else of the same name
+    found: list[tuple[RosterEntry, bool, str]] = []
     identified = 0
     saw_direct_deposit = False
 
@@ -244,6 +252,7 @@ def parse_onpay_employee_export(path: Path | str) -> tuple[list[RosterEntry], li
         clock_col, id_col = pick(_CLOCK_HEADERS), pick(_ID_HEADERS)
         status_col, end_col = pick(_STATUS_HEADERS), pick(_END_HEADERS)
         rate_col, type_col = pick(_RATE_HEADERS), pick(_TYPE_HEADERS)
+        hire_col = pick(_HIRE_HEADERS)
         frequency_col = pick(_FREQUENCY_HEADERS)
         dd_col = pick(_DD_HEADERS)
         saw_direct_deposit = saw_direct_deposit or bool(dd_col)
@@ -292,6 +301,10 @@ def parse_onpay_employee_export(path: Path | str) -> tuple[list[RosterEntry], li
                 _text(row.get(last_col))])) if not name_col else display
             note = "Marked as no longer employed in OnPay." if has_left else ""
 
+            told_apart_by = ", ".join(filter(None, [
+                f"${_text(row.get(rate_col))}" if rate_col and _text(row.get(rate_col)) else "",
+                f"hired {_text(row.get(hire_col))[:10]}" if hire_col and _text(row.get(hire_col)) else "",
+            ]))
             found.append((RosterEntry(
                 caregiver_key=normalise_name(display),
                 display_name=display,
@@ -304,7 +317,7 @@ def parse_onpay_employee_export(path: Path | str) -> tuple[list[RosterEntry], li
                 onpay_pay_frequency=_text(row.get(frequency_col)) if frequency_col else "",
                 note=note,
                 source="onpay_import",
-            ), has_left))
+            ), has_left, told_apart_by))
 
     if not found:
         return [], ["This file has column names but no people underneath them."]
