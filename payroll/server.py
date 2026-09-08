@@ -26,7 +26,7 @@ from . import combine, exports, extras
 from .engine import Adjustment
 from .importer import import_export
 from .roster import (NOT_IN_ONPAY, READY, RosterEntry, STATUS_LABELS,
-                     normalise_name, parse_onpay_employee_export)
+                     merge_import, normalise_name, parse_onpay_employee_export)
 from .rules import DEFAULT_RULES_PATH, Rules, RulesError
 from .run import (build_run, half_month_periods, period_label, suggest_period,
                   weeks_in)
@@ -661,67 +661,15 @@ class Handler(BaseHTTPRequestHandler):
         target = self._save_upload()
         entries, problems = parse_onpay_employee_export(target)
         if not entries and problems:
-            raise ApiError(problems[0])
-        existing = self.store.roster()
-
-        # OnPay knows people by their legal name, which is often not the name
-        # Sitterwise shows - Lissa's OnPay record is Elisabeth R Gray. Matching
-        # on the name alone would make a second roster entry for her and then
-        # report the first one as missing from OnPay. So a Clock User, an
-        # employee id, or a legal name already recorded against somebody all
-        # count as the same person.
-        by_clock = {e.onpay_clock_user.strip().casefold(): key
-                    for key, e in existing.items() if e.onpay_clock_user.strip()}
-        by_emp_id = {e.onpay_employee_id.strip().casefold(): key
-                     for key, e in existing.items() if e.onpay_employee_id.strip()}
-        by_onpay_name = {normalise_name(e.onpay_name): key
-                         for key, e in existing.items() if e.onpay_name.strip()}
-
-        def already_known_as(entry) -> str:
-            for table, value in (
-                (by_clock, entry.onpay_clock_user.strip().casefold()),
-                (by_emp_id, entry.onpay_employee_id.strip().casefold()),
-                (by_onpay_name, entry.caregiver_key),
-            ):
-                if value and value in table:
-                    return table[value]
-            return ""
-
-        added = updated = linked = 0
-        matched_keys = set()
-        for entry in entries:
-            onpay_name = entry.display_name
-            key = entry.caregiver_key
-            if key not in existing:
-                other = already_known_as(entry)
-                if other:
-                    # Same person under a different name. Keep the roster entry
-                    # that is already tied to their bookings.
-                    key = other
-                    linked += 1
-            if key in existing:
-                previous = existing[key]
-                entry.caregiver_key = key
-                entry.display_name = previous.display_name
-                entry.note = previous.note
-                if key != previous.caregiver_key or onpay_name != previous.display_name:
-                    entry.onpay_name = onpay_name
-                updated += 1
-            else:
-                added += 1
-            matched_keys.add(entry.caregiver_key)
+            raise ApiError(" ".join(problems))
+        changed, report = merge_import(self.store.roster(), entries)
+        for entry in changed:
             self.store.upsert_roster_entry(entry, quiet=True)
-
         self.store.log("roster_imported",
-                       f"{target.name}: {added} added, {updated} updated, "
-                       f"{linked} matched under a different name")
-        unmatched = sorted(
-            e.display_name for key, e in existing.items() if key not in matched_keys)
-        return self._json({
-            "ok": True, "added": added, "updated": updated, "linked": linked,
-            "problems": problems,
-            "not_in_onpay_file": unmatched,
-        })
+                       f"{target.name}: {report['updated']} updated, "
+                       f"{report['linked']} matched under a different name, "
+                       f"{report['in_onpay_only']} in OnPay only")
+        return self._json({"ok": True, "problems": problems, **report})
 
 
 def _payroll_already_on(port: int) -> bool:

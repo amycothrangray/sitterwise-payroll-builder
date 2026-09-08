@@ -991,7 +991,7 @@ VIEWS.roster = () => {
 
   <div class="tablewrap tall">
     <table><thead><tr><th>Caregiver</th><th>OnPay status</th><th>Clock User</th>
-      <th>Employee ID</th><th>Name in OnPay</th><th>Note</th><th></th></tr></thead><tbody>
+      <th>Employee ID</th><th>Name in OnPay</th><th>OnPay pays</th><th>Note</th><th></th></tr></thead><tbody>
     ${list.map(e => `<tr>
       <td><strong>${esc(e.display_name)}</strong></td>
       <td><select onchange="saveRoster('${esc(e.caregiver_key)}', this)" data-f="status">
@@ -1004,6 +1004,7 @@ VIEWS.roster = () => {
       <td><input type="text" value="${esc(e.onpay_name || '')}" data-f="onpay_name"
            placeholder="only if different"
            onchange="saveRoster('${esc(e.caregiver_key)}', this)" style="min-width:150px"></td>
+      <td class="faint">${esc(onpayPay(e))}</td>
       <td><input type="text" value="${esc(e.note)}" data-f="note"
            onchange="saveRoster('${esc(e.caregiver_key)}', this)" style="min-width:170px"></td>
       <td class="faint">${esc((e.updated_at || '').slice(0, 10))}</td>
@@ -1011,6 +1012,18 @@ VIEWS.roster = () => {
     </tbody></table>
   </div>`;
 };
+
+// What OnPay says it pays somebody. Read only: a rate is something Amy
+// agreed with a caregiver, so it is shown for comparison and never typed
+// over here.
+function onpayPay(e) {
+  if (!e.onpay_rate) return '';
+  const money = `$${e.onpay_rate}`;
+  if ((e.onpay_pay_type || '').toLowerCase() === 'salary') {
+    return `${money} ${(e.onpay_pay_frequency || '').toLowerCase() || 'per period'}`;
+  }
+  return `${money}/hr`;
+}
 
 async function saveRoster(key, input) {
   const row = input.closest('tr');
@@ -1039,8 +1052,13 @@ async function importRoster(input) {
     await render();
     $('#rosterimport').innerHTML = `
       <div class="banner good" style="margin-top:12px">
-        ${res.added} added, ${res.updated} updated from OnPay.</div>
+        ${plural(res.updated, 'caregiver', 'caregivers')} updated from OnPay${
+          res.linked ? `, ${res.linked} matched under a different name` : ''}.</div>
       ${res.problems.map(p => `<div class="banner warn">${esc(p)}</div>`).join('')}
+      ${res.in_onpay_only ? `<div class="banner">
+        ${plural(res.in_onpay_only, 'person in the file has', 'people in the file have')}
+        never worked a Sitterwise booking, so they were left off the roster. Anyone who
+        does work lands here on their own, and the next import fills them in.</div>` : ''}
       ${res.not_in_onpay_file.length ? `<div class="banner warn">
         On the roster here but not in the OnPay file:
         ${esc(res.not_in_onpay_file.join(', '))}.</div>` : ''}`;

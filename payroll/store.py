@@ -71,6 +71,9 @@ CREATE TABLE IF NOT EXISTS roster (
     onpay_clock_user  TEXT DEFAULT '',
     onpay_employee_id TEXT DEFAULT '',
     onpay_name        TEXT DEFAULT '',
+    onpay_rate        TEXT DEFAULT '',
+    onpay_pay_type    TEXT DEFAULT '',
+    onpay_pay_frequency TEXT DEFAULT '',
     note              TEXT DEFAULT '',
     updated_at        TEXT,
     source            TEXT DEFAULT 'manual'
@@ -146,7 +149,10 @@ class Store:
         column added after somebody started using the app has to be added
         here or their database quietly lacks it.
         """
-        wanted = {"roster": {"onpay_name": "TEXT DEFAULT ''"}}
+        wanted = {"roster": {"onpay_name": "TEXT DEFAULT ''",
+                             "onpay_rate": "TEXT DEFAULT ''",
+                             "onpay_pay_type": "TEXT DEFAULT ''",
+                             "onpay_pay_frequency": "TEXT DEFAULT ''"}}
         for table, columns in wanted.items():
             have = {row["name"] for row in
                     self.db.execute(f"PRAGMA table_info({table})")}
@@ -298,7 +304,11 @@ class Store:
             caregiver_key=r["caregiver_key"], display_name=r["display_name"],
             status=r["status"], onpay_clock_user=r["onpay_clock_user"] or "",
             onpay_employee_id=r["onpay_employee_id"] or "",
-            onpay_name=r["onpay_name"] or "", note=r["note"] or "",
+            onpay_name=r["onpay_name"] or "",
+            onpay_rate=r["onpay_rate"] or "",
+            onpay_pay_type=r["onpay_pay_type"] or "",
+            onpay_pay_frequency=r["onpay_pay_frequency"] or "",
+            note=r["note"] or "",
             updated_at=r["updated_at"] or "", source=r["source"] or "manual",
         ) for r in rows}
 
@@ -308,18 +318,24 @@ class Store:
         entry.updated_at = now()
         self.db.execute(
             """INSERT INTO roster (caregiver_key,display_name,status,onpay_clock_user,
-                                   onpay_employee_id,onpay_name,note,updated_at,source)
-               VALUES (?,?,?,?,?,?,?,?,?)
+                                   onpay_employee_id,onpay_name,onpay_rate,
+                                   onpay_pay_type,onpay_pay_frequency,
+                                   note,updated_at,source)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(caregiver_key) DO UPDATE SET
                  display_name=excluded.display_name, status=excluded.status,
                  onpay_clock_user=excluded.onpay_clock_user,
                  onpay_employee_id=excluded.onpay_employee_id,
                  onpay_name=excluded.onpay_name,
+                 onpay_rate=excluded.onpay_rate,
+                 onpay_pay_type=excluded.onpay_pay_type,
+                 onpay_pay_frequency=excluded.onpay_pay_frequency,
                  note=excluded.note, updated_at=excluded.updated_at,
                  source=excluded.source""",
             (entry.caregiver_key, entry.display_name, entry.status, entry.onpay_clock_user,
-             entry.onpay_employee_id, entry.onpay_name, entry.note, entry.updated_at,
-             entry.source))
+             entry.onpay_employee_id, entry.onpay_name, entry.onpay_rate,
+             entry.onpay_pay_type, entry.onpay_pay_frequency, entry.note,
+             entry.updated_at, entry.source))
         self.db.commit()
         if not quiet and (not existing or existing["status"] != entry.status):
             was = existing["status"] if existing else "not on the roster"
