@@ -366,10 +366,34 @@ def _set_pay(job: Job, rules: Rules, cell=None) -> None:
             )
     else:
         job.hours_paid = job.hours_worked
-        if rules.minimum_enabled and 0 < job.hours_worked < rules.minimum_hours:
-            job.hours_paid = rules.minimum_hours
-            job.minimum_applied = True
+
+    # The minimum is a floor under every worked booking, including one the
+    # export has already put a billed figure on. Taking Sitterwise's figure on
+    # trust used to mean a booking it billed at 3.00 or 3.75 was paid at that,
+    # with the guarantee quietly skipped and nothing said about it.
+    #
+    # A booking nobody worked is left alone: no hours, no guarantee. A
+    # cancellation fee is not a short shift.
+    if (rules.minimum_enabled and job.hours_worked > 0
+            and job.hours_paid < rules.minimum_hours):
+        short_by = to_hours(rules.minimum_hours - job.hours_paid)
+        if not is_blank(stated_billed):
+            job.import_notes.append(
+                f"Sitterwise billed this job at {job.hours_paid} hours, which is under the "
+                f"{rules.minimum_hours}-hour minimum. The app paid {rules.minimum_hours} - "
+                f"{short_by} hours more than the export asked for. Worth checking why "
+                "Sitterwise did not apply its own minimum."
+            )
+        job.hours_paid = rules.minimum_hours
+        job.minimum_applied = True
+
     job.guarantee_hours = to_hours(max(Decimal("0"), job.hours_paid - job.hours_worked))
+    # Hours paid but not worked on a booking somebody turned up for are
+    # guarantee pay however they arose, so the wage statement's minimum column
+    # should say so. A booking nobody worked is a cancellation fee, which is
+    # not the minimum and must not be labelled as it.
+    if job.guarantee_hours > 0 and job.hours_worked > 0:
+        job.minimum_applied = True
     job.straight_pay = money(job.hours_worked * job.rate)
     job.guarantee_pay = money(job.guarantee_hours * job.rate)
 
