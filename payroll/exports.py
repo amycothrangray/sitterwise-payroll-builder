@@ -78,28 +78,62 @@ def _basis(basis: str) -> str:
 
 def onpay_entry_csv(run: PayrollRun, roster: dict[str, RosterEntry],
                     entered: dict[str, bool] | None = None) -> str:
+    """One row per caregiver, holding the figures OnPay is actually typed.
+
+    This used to report hours worked at each rate, which is not what goes in
+    OnPay's Regular box: overtime hours come out of it onto their own column,
+    and minimum top-up hours go into it. Somebody typing 27.00 Regular and
+    3.00 Overtime off this sheet, for a caregiver who worked 27 hours of
+    which 3 were overtime, paid for 30. It is built from the same pay lines
+    as the entry screen now, so the two cannot drift apart.
+    """
     entered = entered or {}
-    tier_keys = [t["key"] for t in run.totals()["tiers"]]
+    mapping = load_onpay_mapping()
+
+    # One column per pay item anybody in this payroll has, in the order the
+    # lines come out, so the sheet reads down the same way OnPay does.
+    lines_by_caregiver: dict[str, dict[str, dict]] = {}
+    columns: list[str] = []
+    hourly: set[str] = set()
+    for caregiver in run.caregivers:
+        roster_entry = roster.get(caregiver.key)
+        rows = onpay_pay_rows(caregiver,
+                              roster_entry.onpay_clock_user if roster_entry else "",
+                              mapping)
+        here = {}
+        for row in rows:
+            name = onpay_pay_item_name(row["id"], mapping)
+            here[name] = row
+            if name not in columns:
+                columns.append(name)
+            if row["hours"]:
+                hourly.add(name)
+        lines_by_caregiver[caregiver.key] = here
+
     buffer, out = _writer()
     header = ["Caregiver", "OnPay Clock User"]
-    header += [f"{run.rules.tier_label(k)} hours" for k in tier_keys]
-    header += ["Minimum hours", "Overtime hours", "Overtime $", "Double time hours",
-               "Double time $", "Tips", "Bonus", "Mileage", "Other reimbursement",
-               "Taxable earnings", "Total being paid", "Entered in OnPay"]
+    for name in columns:
+        if name in hourly:
+            header += [f"{name} hours", f"{name} rate"]
+        else:
+            header.append(f"{name} $")
+    header += ["Taxable earnings", "Total being paid", "Entered in OnPay"]
     out.writerow(header)
+
     for caregiver in run.caregivers:
-        entry = roster.get(caregiver.key)
-        row = [caregiver.name, entry.onpay_clock_user if entry else ""]
-        row += [caregiver.tier_hours(k) or "" for k in tier_keys]
-        row += [
-            caregiver.guarantee_hours or "",
-            caregiver.ot_hours or "", caregiver.ot_premium or "",
-            caregiver.dt_hours or "", caregiver.dt_premium or "",
-            caregiver.tips or "", caregiver.bonus or "",
-            caregiver.mileage_amount or "", caregiver.other_reimbursement or "",
-            caregiver.taxable_earnings, caregiver.total_paid,
-            "yes" if entered.get(caregiver.key) else "",
-        ]
+        roster_entry = roster.get(caregiver.key)
+        here = lines_by_caregiver[caregiver.key]
+        row = [caregiver.name,
+               roster_entry.onpay_clock_user if roster_entry else ""]
+        for name in columns:
+            line = here.get(name)
+            if name in hourly:
+                row += [line["hours"] if line and line["hours"] else "",
+                        line["rate"] if line and line["rate"] else ""]
+            else:
+                row.append(onpay_row_total(line) if line else "")
+        row += [caregiver.taxable_earnings, caregiver.total_paid,
+                "yes" if entered.get(caregiver.key) else ""]
         out.writerow(row)
     return buffer.getvalue()
 
@@ -668,7 +702,10 @@ def all_exports(run: PayrollRun, roster: dict[str, RosterEntry],
          "description": "Every job, with the hours, rate and pay behind it.",
          "filename": f"payroll-detail-{stamp}.csv", "content": payroll_detail_csv(run)},
         {"key": "onpay_entry", "name": "OnPay entry sheet",
-         "description": "One row per caregiver, in the categories you type into OnPay.",
+         "description": ("One row per caregiver, holding the figures you type into "
+                         "OnPay - not the hours they worked. Regular is smaller than "
+                         "the hours worked wherever there is overtime, because OnPay "
+                         "wants those hours on their own."),
          "filename": f"onpay-entry-{stamp}.csv",
          "content": onpay_entry_csv(run, roster, entered)},
         {"key": "summary", "name": "Payroll summary",

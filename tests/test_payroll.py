@@ -9,6 +9,8 @@ Run them with:  python3 -m unittest discover -s tests -v
 """
 from __future__ import annotations
 
+import csv
+import io
 import sys
 import tempfile
 import unittest
@@ -698,6 +700,43 @@ class TestExports(PayrollCase):
     def test_the_onpay_grid_has_a_row_for_every_caregiver(self):
         csv_text = exports.onpay_entry_csv(self.payroll, self.roster)
         self.assertEqual(len(csv_text.strip().splitlines()) - 1, len(self.payroll.caregivers))
+
+    def test_the_entry_sheet_holds_what_onpay_is_typed_not_hours_worked(self):
+        """Somebody typing 27.00 Regular and 3.00 Overtime off this sheet, for
+        a caregiver who worked 27 hours of which 3 were overtime, pays for 30.
+        The sheet has to carry the same figures as the entry screen."""
+        rows = list(csv.DictReader(io.StringIO(
+            exports.onpay_entry_csv(self.payroll, self.roster))))
+        mapping = exports.load_onpay_mapping()
+        for caregiver in self.payroll.caregivers:
+            row = next(r for r in rows if r["Caregiver"] == caregiver.name)
+            from_sheet = {key[:-6]: value for key, value in row.items()
+                          if key.endswith(" hours") and value}
+            from_lines = {exports.onpay_pay_item_name(line["id"], mapping): str(line["hours"])
+                          for line in exports.onpay_pay_rows(caregiver, "100", mapping)
+                          if line["hours"]}
+            self.assertEqual(from_sheet, from_lines, caregiver.name)
+
+    def test_overtime_hours_are_not_also_in_the_regular_column(self):
+        rows = list(csv.DictReader(io.StringIO(
+            exports.onpay_entry_csv(self.payroll, self.roster))))
+        checked = 0
+        for caregiver in self.payroll.caregivers:
+            if not caregiver.ot_hours or caregiver.uses_multiple_rates:
+                continue
+            row = next(r for r in rows if r["Caregiver"] == caregiver.name)
+            self.assertEqual(
+                money(row["Regular hours"]) + money(caregiver.ot_hours)
+                + money(caregiver.dt_hours),
+                money(caregiver.hours_worked) + money(caregiver.guarantee_hours),
+                caregiver.name)
+            checked += 1
+        self.assertTrue(checked, "no single-rate overtime caregiver to check")
+
+    def test_the_entry_sheet_still_has_a_row_per_caregiver(self):
+        rows = list(csv.DictReader(io.StringIO(
+            exports.onpay_entry_csv(self.payroll, self.roster))))
+        self.assertEqual(len(rows), len(self.payroll.caregivers))
 
     def test_the_summary_carries_the_reconciliation(self):
         text = exports.payroll_summary_csv(self.payroll)
