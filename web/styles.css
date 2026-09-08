@@ -228,6 +228,12 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--coral)}
   cursor:pointer;width:100%;background:none;text-align:left;color:inherit}
 .runrow:hover{background:#F7F9FB}
 .runrow:last-child{border-bottom:0}
+/* A run and the button to remove it sit side by side; a button inside a
+   button is not valid, so the row is a strip holding both. */
+.runstrip{display:flex;align-items:center;border-bottom:1px solid var(--line)}
+.runstrip:last-child{border-bottom:0}
+.runstrip .runrow{flex:1;border-bottom:0}
+.runstrip .runbin{margin-right:16px;flex:none}
 .runrow .rl{font-family:var(--disp);font-weight:600;font-size:15.5px;color:var(--navy)}
 
 @media(max-width:760px){

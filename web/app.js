@@ -1076,20 +1076,40 @@ VIEWS.history = () => {
     <p class="sub">Finished payrolls are read-only until you deliberately unlock them.</p>
   </div>
   ${runs.length ? `<div class="card" style="padding:0">${runs.map(r => `
-    <button class="runrow" onclick="openRun('${r.id}')">
-      <div>
-        <div class="rl">${esc(r.label)}</div>
-        <div class="faint">${esc(r.source_filename || '')} ·
-          ${r.finalized_at ? 'finished ' + esc(r.finalized_at.slice(0, 10)) : 'started ' + esc((r.created_at || '').slice(0, 10))}
-          · rules ${esc(r.rules_version || '')}</div>
-      </div>
-      <span class="pill ${r.status === 'finalized' ? 'entered' : 'plain'}" style="margin-left:auto">
-        ${r.status === 'finalized' ? 'Locked' : 'In progress'}</span>
-    </button>`).join('')}</div>` : `<div class="empty">No payrolls yet.</div>`}
+    <div class="runstrip">
+      <button class="runrow" onclick="openRun('${r.id}')">
+        <div>
+          <div class="rl">${esc(r.label)}</div>
+          <div class="faint">${esc(r.source_filename || '')} ·
+            ${r.finalized_at ? 'finished ' + esc(r.finalized_at.slice(0, 10)) : 'started ' + esc((r.created_at || '').slice(0, 10))}
+            · rules ${esc(r.rules_version || '')}</div>
+        </div>
+        <span class="pill ${r.status === 'finalized' ? 'entered' : 'plain'}" style="margin-left:auto">
+          ${r.status === 'finalized' ? 'Locked' : 'In progress'}</span>
+      </button>
+      ${r.status === 'finalized' ? '' : `<button class="btn btn-sm btn-ghost runbin"
+        onclick="deleteRun('${r.id}', ${JSON.stringify(r.label).replace(/"/g, '&quot;')})">Remove</button>`}
+    </div>`).join('')}</div>` : `<div class="empty">No payrolls yet.</div>`}
 
   <h2 style="margin-top:30px">Everything that's been changed by hand</h2>
   <div id="audit" class="card"><p class="muted">Loading…</p></div>`;
 };
+
+// Throwing away a payroll nobody has finished - a run built from the wrong
+// file, or one rebuilt after a fix. A finished payroll has no Remove button
+// and the app refuses to delete one, so history cannot be quietly rewritten.
+async function deleteRun(id, label) {
+  if (!confirm(`Remove "${label}"?\n\nThe payroll itself goes, along with anything `
+      + `corrected by hand on it. The uploaded file stays, and what was changed stays `
+      + `in the audit trail. Finished payrolls cannot be removed this way.`)) return;
+  try {
+    await api(`/api/runs/${id}`, { method: 'DELETE' });
+    if (S.runId === id) { S.runId = null; S.run = null; }
+    S.home = await api('/api/state');
+    toast('Removed');
+    await render();
+  } catch (e) { toast(e.message, true); }
+}
 
 VIEWS.after_history = async () => {
   const data = await api('/api/audit');

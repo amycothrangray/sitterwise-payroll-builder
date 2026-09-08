@@ -759,3 +759,49 @@ class TestExports(PayrollCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class RemovingAPayroll(unittest.TestCase):
+    """A run built from the wrong file, or rebuilt after a fix, can be thrown
+    away. A finished one cannot - history is not quietly rewritten."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.dir.name) / "payroll.sqlite3")
+
+    def tearDown(self):
+        self.store.close()
+        self.dir.cleanup()
+
+    def a_run(self):
+        return self.store.create_run(
+            "Mon 31 Aug - Sun 6 Sep", date(2026, 8, 31), date(2026, 9, 6),
+            {"version": "1.0"}, "bookings.xlsx", "abc123", "data/bookings.xlsx")
+
+    def test_an_unfinished_payroll_can_be_removed(self):
+        run_id = self.a_run()
+        self.store.delete_run(run_id)
+        self.assertIsNone(self.store.get_run(run_id))
+
+    def test_a_finished_payroll_is_refused(self):
+        run_id = self.a_run()
+        self.store.finalize_run(run_id, [], {})
+        with self.assertRaises(ValueError) as caught:
+            self.store.delete_run(run_id)
+        self.assertIn("locked", str(caught.exception).lower())
+        self.assertIsNotNone(self.store.get_run(run_id))
+
+    def test_removing_one_leaves_the_others(self):
+        keep, drop = self.a_run(), self.a_run()
+        self.store.delete_run(drop)
+        self.assertIsNotNone(self.store.get_run(keep))
+
+    def test_it_is_written_into_the_audit_trail(self):
+        self.store.delete_run(self.a_run())
+        actions = [e["action"] for e in self.store.audit_entries()] \
+            if hasattr(self.store, "audit_entries") else \
+            [r["action"] for r in self.store.db.execute("SELECT action FROM audit_log")]
+        self.assertIn("run_deleted", actions)
+
+    def test_removing_a_payroll_that_is_already_gone_is_harmless(self):
+        self.store.delete_run("deadbeef")
