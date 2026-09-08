@@ -116,9 +116,10 @@ def _squash(value) -> str:
 
 def _looks_like_a_header(cells) -> bool:
     """A row of column names, rather than a title or somebody's details."""
+    # A row naming a name column is a header however few columns it has. A
+    # file of nothing but names and Clock Users - which is all the roster
+    # needs - is two columns wide.
     squashed = {_squash(c) for c in cells if c is not None and str(c).strip()}
-    if len(squashed) < 3:
-        return False
     return bool(squashed & _NAME_HEADERS
                 or (squashed & _FIRST_HEADERS and squashed & _LAST_HEADERS))
 
@@ -128,7 +129,7 @@ def _table(rows) -> tuple[list[str], list[dict]]:
     for index, cells in enumerate(rows[:_HEADER_SEARCH_ROWS]):
         if _looks_like_a_header(cells):
             header = [str(h or "") for h in cells]
-            body = [dict(zip(header, r)) for r in rows[index + 1:]
+            body = [r for r in rows[index + 1:]
                     if any(c is not None and str(c).strip() for c in r)]
             return header, body
     return [], []
@@ -147,13 +148,27 @@ def _sheets(path: Path) -> list[tuple[str, list[str], list[dict]]]:
         for sheet in workbook.worksheets:
             header, body = _table(list(sheet.iter_rows(values_only=True)))
             if header:
-                out.append((sheet.title, header, body))
+                out.append((sheet.title, header,
+                            [dict(zip(header, r)) for r in body]))
         workbook.close()
         return out
     with open(path, newline="", encoding="utf-8-sig") as fh:
         rows = [tuple(r) for r in csv.reader(fh)]
     header, body = _table(rows)
-    return [("", header, body)] if header else []
+    if not header:
+        return []
+    # A name written Okafor, Tess without quotes around it splits into two
+    # fields and shoves every column after it one place across, so the Clock
+    # User read for somebody would be a piece of their own name. A row wider
+    # than its header is that, and it is not safe to guess at.
+    wide = sum(1 for row in body if len(row) > len(header))
+    if wide:
+        raise ValueError(
+            f"{wide} {'row has' if wide == 1 else 'rows have'} more values than there "
+            f"are columns. A name with a comma in it needs quotes around it, "
+            f'like "Okafor, Tess" - without them the columns after it shift across '
+            "and the wrong value is read for each one.")
+    return [("", header, [dict(zip(header, r)) for r in body])]
 
 
 def _one_row_each(found: list[tuple[RosterEntry, bool]],
@@ -390,8 +405,10 @@ def merge_import(existing: dict[str, RosterEntry],
         # export carries no Clock User at all, so importing it must not wipe
         # the ones Amy typed in - nor knock somebody back to "setup
         # incomplete" when the file simply has nothing to say about them.
-        entry.onpay_clock_user = entry.onpay_clock_user or previous.onpay_clock_user
-        entry.onpay_employee_id = entry.onpay_employee_id or previous.onpay_employee_id
+        for field in ("onpay_clock_user", "onpay_employee_id", "onpay_rate",
+                      "onpay_pay_type", "onpay_pay_frequency"):
+            if not getattr(entry, field):
+                setattr(entry, field, getattr(previous, field))
         if entry.status != READY and (previous.onpay_clock_user
                                       or previous.onpay_employee_id):
             entry.status = previous.status

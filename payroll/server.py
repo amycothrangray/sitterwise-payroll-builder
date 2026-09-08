@@ -671,7 +671,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _import_roster(self):
         target = self._save_upload()
-        entries, problems = parse_onpay_employee_export(target)
+        try:
+            entries, problems = parse_onpay_employee_export(target)
+        except ValueError as exc:
+            raise ApiError(str(exc))
         if not entries and problems:
             raise ApiError(" ".join(problems))
         changed, report = merge_import(self.store.roster(), entries)

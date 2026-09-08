@@ -231,6 +231,34 @@ class WithoutAClockUser(unittest.TestCase):
             write_export(self.dir, [person("Okafor", "Tess")]))
         self.assertTrue(any("direct deposit" in p for p in problems))
 
+    def test_two_columns_of_names_and_clock_users_are_enough(self):
+        """All the roster actually needs. Someone reading the numbers out of
+        OnPay by hand should not have to pad the file out to be understood."""
+        path = self.dir / "clock-users.csv"
+        path.write_text("Name,Clock User\nTess Okafor,1042\nNia Vance,1043\n",
+                        encoding="utf-8")
+        entries, _ = parse_onpay_employee_export(path)
+        self.assertEqual([(e.display_name, e.onpay_clock_user) for e in entries],
+                         [("Tess Okafor", "1042"), ("Nia Vance", "1043")])
+        self.assertEqual(entries[0].status, READY)
+
+    def test_a_quoted_last_comma_first_name_is_turned_around(self):
+        path = self.dir / "commas.csv"
+        path.write_text('Name,Clock User\n"Okafor, Tess",1042\n', encoding="utf-8")
+        entries, _ = parse_onpay_employee_export(path)
+        self.assertEqual(entries[0].display_name, "Tess Okafor")
+        self.assertEqual(entries[0].onpay_clock_user, "1042")
+
+    def test_an_unquoted_comma_shifts_the_columns_and_is_refused(self):
+        """Without the quotes the name splits in two and every column after
+        it moves across, so the Clock User read for somebody would be half of
+        their own name. Paying on that is worse than not importing."""
+        path = self.dir / "shifted.csv"
+        path.write_text("Name,Clock User\nOkafor, Tess,1042\n", encoding="utf-8")
+        with self.assertRaises(ValueError) as caught:
+            parse_onpay_employee_export(path)
+        self.assertIn("quotes", str(caught.exception))
+
     def test_a_file_with_no_recognisable_columns_is_refused(self):
         path = self.dir / "wrong.csv"
         path.write_text("total,amount\n10,20\n", encoding="utf-8")
@@ -271,6 +299,26 @@ class FoldingTheExportIntoTheRosterHere(unittest.TestCase):
                                     onpay_clock_user="1042")),
             [RosterEntry("tess okafor", "Tess Okafor", onpay_rate="23",
                          onpay_pay_type="Hourly")])
+        self.assertEqual(changed[0].onpay_rate, "23")
+
+    def test_a_later_import_of_clock_users_keeps_the_rates(self):
+        """The employee export carries rates and no Clock Users; a list of
+        Clock Users carries no rates. Two imports have to add up, not take
+        turns rubbing each other out."""
+        changed, _ = merge_import(
+            self.roster(RosterEntry("tess okafor", "Tess Okafor", onpay_rate="23",
+                                    onpay_pay_type="Hourly", onpay_pay_frequency="Weekly")),
+            [RosterEntry("tess okafor", "Tess Okafor", onpay_clock_user="1042")])
+        entry = changed[0]
+        self.assertEqual(entry.onpay_clock_user, "1042")
+        self.assertEqual((entry.onpay_rate, entry.onpay_pay_type), ("23", "Hourly"))
+
+    def test_a_changed_rate_does_come_through(self):
+        """Filling blanks is not the same as ignoring what OnPay says. A rate
+        that is actually in the file wins."""
+        changed, _ = merge_import(
+            self.roster(RosterEntry("tess okafor", "Tess Okafor", onpay_rate="20")),
+            [RosterEntry("tess okafor", "Tess Okafor", onpay_rate="23")])
         self.assertEqual(changed[0].onpay_rate, "23")
 
     def test_a_note_somebody_wrote_is_left_alone(self):
