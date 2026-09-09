@@ -441,7 +441,7 @@ def _check_job(job: Job, caregiver: CaregiverPayroll, rules: Rules) -> list[Find
                 f"{name}'s hours do not agree on {_when(job)}",
                 f"Sitterwise says {job.hours_exported} hours on booking {job.booking_id}, but "
                 f"the start and end times work out to {job.hours_worked}. The app used the "
-                f"clock, which pays {job.straight_pay}.",
+                f"clock. " + _what_this_booking_paid(job),
                 "Check which one is right in Sitterwise.",
                 key, name, [job.booking_id],
             ))
@@ -634,6 +634,23 @@ def _check_data_gaps(jobs: list[Job], rules: Rules) -> list[Finding]:
             booking_ids=[j.booking_id for j in mileage_jobs],
         ))
     return out
+
+
+def _what_this_booking_paid(job) -> str:
+    """What the caregiver actually gets for one booking, in full.
+
+    This used to say only "which pays {straight_pay}" - the worked hours at
+    the rate, with the minimum top-up left off. It reads like the whole
+    figure, and it was read that way: a booking paid 4.00 hours looked like
+    it had been paid 3.00, and a payroll was held up over three caregivers
+    who were never short. Say the whole amount, and show the top-up.
+    """
+    rate = job.rate.quantize(Decimal("0.01"))
+    if job.guarantee_hours > 0:
+        return (f"Paid {job.hours_worked} hours at {rate} ({job.straight_pay}) plus "
+                f"{job.guarantee_hours} hours of minimum top-up ({job.guarantee_pay}), "
+                f"so {job.straight_pay + job.guarantee_pay} for this booking.")
+    return f"Paid {job.hours_worked} hours at {rate}, {job.straight_pay}."
 
 
 def _when(job: Job) -> str:

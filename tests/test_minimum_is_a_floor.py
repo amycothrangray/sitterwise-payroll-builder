@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from payroll.importer import _set_pay                                    # noqa: E402
 from payroll.model import Job                                            # noqa: E402
 from payroll.rules import Rules                                          # noqa: E402
+from payroll.validate import _what_this_booking_paid                      # noqa: E402
 
 FIELDS = inspect.signature(Job.__init__).parameters
 
@@ -123,3 +124,32 @@ class WhatTheMinimumMustNotTouch(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SayingWhatABookingActuallyPaid(unittest.TestCase):
+    """The hours-disagreement finding used to report only the worked hours at
+    the rate and leave the minimum top-up off. It reads like the whole figure.
+    On 9 September 2026 it was read that way, and a payroll was held up over
+    three caregivers who were never short."""
+
+    def test_a_topped_up_booking_reports_the_whole_amount(self):
+        job = job_paid("3.00", rate="23")
+        text = _what_this_booking_paid(job)
+        self.assertIn("92.00", text)
+        self.assertIn("minimum top-up", text)
+
+    def test_it_still_shows_the_working(self):
+        text = _what_this_booking_paid(job_paid("3.00", rate="23"))
+        self.assertIn("69.00", text)      # the worked hours
+        self.assertIn("23.00", text)      # the top-up
+
+    def test_a_normal_booking_says_one_figure(self):
+        text = _what_this_booking_paid(job_paid("6.00", rate="23"))
+        self.assertIn("138.00", text)
+        self.assertNotIn("top-up", text)
+
+    def test_it_names_no_pronoun(self):
+        for hours in ("3.00", "6.00"):
+            text = _what_this_booking_paid(job_paid(hours, rate="23")).lower()
+            for word in (" she ", " her ", " he ", " his "):
+                self.assertNotIn(word, f" {text} ")
