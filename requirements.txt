@@ -1,1 +1,5 @@
 openpyxl>=3.1
+
+# Only for reading OnPay's payroll register on the
+# CalSavers step. Payroll runs without it.
+pypdf

@@ -929,7 +929,22 @@ async function unlockRun() {
    ===================================================================== */
 VIEWS.exports = () => `
   ${runHeader()}
-  <div id="exportlist"><div class="empty">Loading…</div></div>`;
+  <div id="exportlist"><div class="empty">Loading…</div></div>
+
+  <div class="card">
+    <div class="spread">
+      <div>
+        <h3>CalSavers contributions</h3>
+        <p class="muted" style="margin:4px 0 0">After payroll is submitted, drop OnPay's
+          payroll register here and this reads out who is owed a CalSavers contribution,
+          ready to type into the CalSavers portal. It has to be sent within seven days
+          of the pay date.</p>
+      </div>
+      <button class="btn" onclick="$('#calsaversfile').click()">Read the register</button>
+      <input type="file" id="calsaversfile" accept=".pdf" hidden onchange="readCalSavers(this)">
+    </div>
+    <div id="calsavers"></div>
+  </div>`;
 
 VIEWS.after_exports = async () => {
   const data = await api(`/api/runs/${S.runId}/exports`);
@@ -1107,6 +1122,47 @@ async function importRoster(input) {
         On the roster here but not in the OnPay file:
         ${esc(res.not_in_onpay_file.join(', '))}.</div>` : ''}`;
   } catch (e) { toast(e.message, true); }
+}
+
+// The register OnPay prints for a payroll, read for the CalSavers figures.
+// Nothing here reaches CalSavers - somebody types these into the portal.
+async function readCalSavers(input) {
+  const file = input.files[0];
+  if (!file) return;
+  $('#calsavers').innerHTML = `<p class="muted" style="margin-top:12px">Reading…</p>`;
+  try {
+    const res = await api('/api/calsavers', {
+      method: 'POST', headers: { 'X-Filename': encodeURIComponent(file.name) }, body: file,
+    });
+    const rows = res.people.map(p => `${p.name},${p.amount}`).join('\n');
+    $('#calsavers').innerHTML = `
+      ${res.problems.map(p => `<div class="banner bad" style="margin-top:12px">${esc(p)}</div>`).join('')}
+      ${res.people.length ? `
+      <div class="banner good" style="margin-top:12px">
+        ${plural(res.people.length, 'contribution', 'contributions')} totalling
+        $${esc(res.total)}${res.pay_date ? `, for the pay date ${esc(res.pay_date)}` : ''}.
+        They add up to the deductions total on the register.</div>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Caregiver</th><th style="text-align:right">Contribution</th></tr></thead>
+        <tbody>${res.people.map(p => `<tr>
+          <td><strong>${esc(p.name)}</strong></td>
+          <td style="text-align:right" class="mono">$${esc(p.amount)}</td></tr>`).join('')}
+          <tr><td class="faint">Total</td>
+            <td style="text-align:right" class="mono"><strong>$${esc(res.total)}</strong></td></tr>
+        </tbody></table></div>
+      <div class="payline" style="align-items:flex-start;margin-top:10px">
+        <pre class="payline-note" style="white-space:pre-wrap;margin:0">${esc(rows)}</pre>
+        <button class="btn btn-sm" onclick="copy(${JSON.stringify(rows)
+          .replace(/"/g, '&quot;')}, this)">Copy</button>
+      </div>
+      <p class="muted" style="margin:10px 0 0">Enter these in the CalSavers portal against
+        the pay date above. Only what was withheld from each caregiver — CalSavers does not
+        allow an employer contribution or a match.</p>`
+      : (res.problems.length ? '' : `<div class="banner good" style="margin-top:12px">
+          Nobody has a CalSavers deduction on this payroll, so there is nothing to send.</div>`)}`;
+  } catch (e) {
+    $('#calsavers').innerHTML = `<div class="banner bad" style="margin-top:12px">${esc(e.message)}</div>`;
+  }
 }
 
 /* =====================================================================

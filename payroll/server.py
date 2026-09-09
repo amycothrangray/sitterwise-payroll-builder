@@ -24,7 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import combine, exports, extras, settings_files
+from . import calsavers, combine, exports, extras, settings_files
 from .engine import Adjustment
 from .importer import import_export
 from .roster import (NOT_IN_ONPAY, READY, RosterEntry, STATUS_LABELS,
@@ -449,6 +449,18 @@ class Handler(BaseHTTPRequestHandler):
         match = re.fullmatch(r"/api/runs/([0-9a-f]+)/notes/apply", path)
         if match:
             return self._apply_notes(match.group(1))
+
+        if path == "/api/calsavers":
+            # The register OnPay prints before a payroll is processed. Only
+            # read - it never reaches CalSavers from here, somebody types it.
+            target = self._save_upload()
+            try:
+                found = calsavers.read_register(target)
+            except RuntimeError as exc:
+                raise ApiError(str(exc))
+            self.store.log("calsavers_read",
+                           f"{target.name}: {len(found.people)} contributions, {found.total}")
+            return self._json(found.to_dict())
 
         if path == "/api/roster/clock-users":
             # OnPay has no bulk import for Clock Users, so somebody types each
