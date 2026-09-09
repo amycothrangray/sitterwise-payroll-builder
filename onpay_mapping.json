@@ -18,8 +18,8 @@
     "standard": 1,
     "three_to_four": 119,
     "_three_to_four_note": "Amy renamed OnPay's 'Custom 4' (id 119) to '3-4 Children' on 4 Sep 2026 and confirmed it saved. Custom 1, 2, 3 and 5-13 are still at their default names.",
-    "unknown": 17,
-    "_unknown_note": "A safety net only. A job whose rate the app could not work out stops the payroll check, and anyone stopped is kept out of the import file, so this should never be reached."
+    "unknown": 118,
+    "_unknown_note": "A safety net only. A job whose rate the app could not work out stops the payroll check, and anyone stopped is kept out of the import file, so this should never be reached. Moved off Custom 2 (id 17) on 9 Sep 2026: Custom 2 now carries the overtime premium for a caregiver who worked two rates, which is entered by hand because OnPay's grid always pays 1.5x the row's rate. This is id 118, 'Custom 3'."
   },
   "ob3_qualified_overtime": "all_overtime_hours",
   "rate_decimals": 4,
@@ -40,5 +40,6 @@
     "208": "Controlled Tips",
     "119": "3-4 Children",
     "17": "Custom 2"
-  }
+  },
+  "_manual_entry_note": "A caregiver who worked two rates in a week has an overtime premium that OnPay's on-screen grid cannot take - its Overtime column always pays 1.5x that row's rate, which would overpay them. The import file has no such problem: it carries an explicit rate on pay item 2. When somebody is typing instead, the premium goes on Custom 2 (id 17) as hours at half the weighted regular rate, so the wage statement still shows hours and a rate rather than a lump sum."
 }
