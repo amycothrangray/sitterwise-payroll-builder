@@ -24,13 +24,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import combine, exports, extras
+from . import combine, exports, extras, settings_files
 from .engine import Adjustment
 from .importer import import_export
 from .roster import (NOT_IN_ONPAY, READY, RosterEntry, STATUS_LABELS,
                      assign_clock_users, merge_import, normalise_name,
                      parse_onpay_employee_export)
-from .rules import DEFAULT_RULES_PATH, Rules, RulesError
+from .rules import Rules, RulesError
 from .run import (build_run, half_month_periods, period_label, suggest_period,
                   weeks_in)
 from .store import DATA_DIR, Store
@@ -307,10 +307,13 @@ class Handler(BaseHTTPRequestHandler):
             })
         if path == "/api/settings":
             return self._json({
-                "rules": json.loads(DEFAULT_RULES_PATH.read_text(encoding="utf-8")),
-                "path": str(DEFAULT_RULES_PATH),
+                # What is in force, which is your copy in data/ - not the
+                # defaults the app was shipped with.
+                "rules": json.loads(
+                    settings_files.rules_path().read_text(encoding="utf-8")),
+                "path": str(settings_files.rules_path()),
                 "onpay_mapping": exports.load_onpay_mapping(),
-                "onpay_mapping_path": str(exports.MAPPING_PATH),
+                "onpay_mapping_path": str(settings_files.mapping_path()),
             })
         if path == "/api/audit":
             return self._json({"entries": store.audit_trail(query.get("run", [None])[0])})
@@ -475,12 +478,12 @@ class Handler(BaseHTTPRequestHandler):
             rules_data = data.get("rules")
             if rules_data is not None:
                 Rules(rules_data)          # refuses to save something unusable
-                DEFAULT_RULES_PATH.write_text(
+                settings_files.rules_path().write_text(
                     json.dumps(rules_data, indent=2) + "\n", encoding="utf-8")
                 store.log("settings_saved", f"rules version {rules_data.get('version')}")
             mapping = data.get("onpay_mapping")
             if mapping is not None:
-                exports.MAPPING_PATH.write_text(
+                settings_files.mapping_path().write_text(
                     json.dumps(mapping, indent=2) + "\n", encoding="utf-8")
                 store.log("settings_saved", "OnPay column mapping")
             with _cache_lock:

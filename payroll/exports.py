@@ -21,6 +21,10 @@ from .run import PayrollRun
 
 ZERO = Decimal("0")
 
+from .settings_files import mapping_path                                  # noqa: E402
+
+# Kept for anything that still imports it; the file actually read and written
+# is the copy in data/ - see payroll/settings_files.py.
 MAPPING_PATH = Path(__file__).resolve().parent.parent / "onpay_mapping.json"
 
 
@@ -260,7 +264,7 @@ def caregiver_detail_csv(run: PayrollRun, roster: dict[str, RosterEntry]) -> str
 # --- 6. the OnPay import file -----------------------------------------------
 
 def load_onpay_mapping(path: Path | str | None = None) -> dict:
-    with open(Path(path) if path else MAPPING_PATH, encoding="utf-8") as fh:
+    with open(Path(path) if path else mapping_path(), encoding="utf-8") as fh:
         return json.load(fh)
 
 

@@ -14,6 +14,10 @@ from pathlib import Path
 
 from .money import money, hours, rate as to_rate
 
+from .settings_files import rules_path                                    # noqa: E402
+
+# Kept for anything that still imports it. The settings the app reads and
+# writes are in data/ - see payroll/settings_files.py.
 DEFAULT_RULES_PATH = Path(__file__).resolve().parent.parent / "rules.json"
 
 _WEEKDAYS = {
@@ -34,7 +38,7 @@ class Rules:
     # -- construction ---------------------------------------------------
     @classmethod
     def load(cls, path: Path | str | None = None) -> "Rules":
-        path = Path(path) if path else DEFAULT_RULES_PATH
+        path = Path(path) if path else rules_path()
         with open(path, "r", encoding="utf-8") as fh:
             return cls(json.load(fh))
 
