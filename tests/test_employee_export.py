@@ -26,7 +26,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from payroll.roster import (DIRECT_DEPOSIT_INCOMPLETE, READY,               # noqa: E402
                             SETUP_INCOMPLETE, RosterEntry, assign_clock_users,
-                            merge_import, parse_onpay_employee_export)
+                            compare_clock_users, merge_import, normalise_name,
+                            parse_onpay_employee_export)
 
 COLUMNS = ["Last Name", "First Name", "Middle Name", "Employee Number", "Social",
            "Hire Date", "Termination Date", "Type", "Rate", "Pay Frequency"]
@@ -421,3 +422,60 @@ class HandingOutClockUsers(unittest.TestCase):
                              RosterEntry("new", "Nia Vance"))
         assign_clock_users(roster)
         self.assertNotEqual(roster["new"].onpay_clock_user, "1001")
+
+
+class CheckingWhatWasTypedIntoOnPay(unittest.TestCase):
+    """Sixty-odd Clock Users get typed into OnPay one profile at a time and a
+    typo does not announce itself. A number matching nobody makes that
+    caregiver's pay line fail to import, which is loud and recoverable. A
+    number matching somebody ELSE pays one caregiver's hours to another."""
+
+    def setUp(self):
+        self.roster = {
+            "a": RosterEntry("a", "Abigail Currie", onpay_clock_user="1001"),
+            "b": RosterEntry("b", "Beth Jones", onpay_clock_user="1002"),
+            "c": RosterEntry("c", "Cara Lin", onpay_clock_user="1003"),
+        }
+
+    def read_back(self, *pairs):
+        return [RosterEntry(normalise_name(n), n, onpay_clock_user=c) for n, c in pairs]
+
+    def test_everything_matching_is_reported_as_matching(self):
+        report = compare_clock_users(self.roster, self.read_back(
+            ("Abigail Currie", "1001"), ("Beth Jones", "1002"), ("Cara Lin", "1003")))
+        self.assertEqual(len(report["agree"]), 3)
+        self.assertEqual(report["wrong"], [])
+        self.assertEqual(report["missing"], [])
+
+    def test_a_number_belonging_to_another_caregiver_is_called_out(self):
+        report = compare_clock_users(self.roster, self.read_back(("Beth Jones", "1003")))
+        wrong = report["wrong"][0]
+        self.assertTrue(wrong["pays_someone_else"])
+        self.assertIn("Cara Lin", wrong["why"])
+
+    def test_a_number_belonging_to_nobody_is_separated_from_that(self):
+        report = compare_clock_users(self.roster, self.read_back(("Beth Jones", "9999")))
+        wrong = report["wrong"][0]
+        self.assertFalse(wrong["pays_someone_else"])
+        self.assertIn("nobody", wrong["why"])
+
+    def test_somebody_left_out_of_the_readback_is_named(self):
+        report = compare_clock_users(self.roster, self.read_back(("Abigail Currie", "1001")))
+        self.assertEqual([m["name"] for m in report["missing"]],
+                         ["Beth Jones", "Cara Lin"])
+
+    def test_a_name_the_roster_does_not_know_is_reported_not_ignored(self):
+        report = compare_clock_users(self.roster, self.read_back(("Zara Quinn", "1010")))
+        self.assertEqual(report["unknown"][0]["name"], "Zara Quinn")
+
+    def test_it_matches_somebody_under_their_onpay_name(self):
+        roster = {"lissa": RosterEntry("lissa", "Lissa Gray", onpay_clock_user="1001",
+                                       onpay_name="Elisabeth R Gray")}
+        report = compare_clock_users(roster, self.read_back(("Elisabeth R Gray", "1001")))
+        self.assertEqual(len(report["agree"]), 1)
+        self.assertEqual(report["unknown"], [])
+
+    def test_checking_changes_nothing(self):
+        before = {k: e.onpay_clock_user for k, e in self.roster.items()}
+        compare_clock_users(self.roster, self.read_back(("Beth Jones", "9999")))
+        self.assertEqual({k: e.onpay_clock_user for k, e in self.roster.items()}, before)

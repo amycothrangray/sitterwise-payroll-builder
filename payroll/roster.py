@@ -489,3 +489,73 @@ def assign_clock_users(roster: dict[str, RosterEntry],
         while str(next_number) in taken:
             next_number += 1
     return assigned
+
+
+def compare_clock_users(roster: dict[str, RosterEntry],
+                        entries: list[RosterEntry]) -> dict:
+    """Check the Clock Users in OnPay against the ones the app handed out.
+
+    They are typed into OnPay one profile at a time, sixty-odd times, and a
+    typo does not announce itself. A number that matches nobody makes that
+    caregiver's pay line fail to import, which is loud and recoverable. A
+    number that matches somebody ELSE pays one caregiver's hours to another,
+    which is neither. So every number is read back and compared, and this
+    says which of the two happened.
+
+    Nothing is saved. This only reports.
+    """
+    ours = {key: e.onpay_clock_user.strip() for key, e in roster.items()
+            if e.onpay_clock_user.strip()}
+    by_number: dict[str, list[str]] = {}
+    for key, number in ours.items():
+        by_number.setdefault(number, []).append(roster[key].display_name)
+
+    def known_as(entry: RosterEntry) -> str:
+        """The roster entry this read-back row is about.
+
+        Matched on the name shown, the legal name OnPay holds them under, or
+        the key itself - the file comes back with whatever OnPay calls them,
+        which for Lissa is Elisabeth R Gray.
+        """
+        if entry.caregiver_key in roster:
+            return entry.caregiver_key
+        wanted = normalise_name(entry.display_name)
+        for key, e in roster.items():
+            if wanted in (normalise_name(e.display_name),
+                          normalise_name(e.onpay_name), e.caregiver_key):
+                return key
+        return ""
+
+    agree, wrong, unknown = [], [], []
+    seen: set[str] = set()
+    for entry in entries:
+        key = known_as(entry)
+        theirs = entry.onpay_clock_user.strip()
+        if not key:
+            unknown.append({"name": entry.display_name, "onpay": theirs,
+                            "why": "nobody on the roster goes by this name"})
+            continue
+        seen.add(key)
+        mine = ours.get(key, "")
+        if not mine:
+            unknown.append({"name": roster[key].display_name, "onpay": theirs,
+                            "why": "the app has not given this caregiver a number"})
+        elif theirs == mine:
+            agree.append({"name": roster[key].display_name, "clock_user": mine})
+        else:
+            # Whose number did they actually get? That is the difference
+            # between a line that fails to import and one that pays the
+            # wrong person.
+            belongs_to = [n for n in by_number.get(theirs, [])
+                          if n != roster[key].display_name]
+            wrong.append({
+                "name": roster[key].display_name, "ours": mine, "onpay": theirs,
+                "why": (f"that number belongs to {', '.join(belongs_to)}"
+                        if belongs_to else "that number belongs to nobody"),
+                "pays_someone_else": bool(belongs_to),
+            })
+
+    missing = [{"name": e.display_name, "ours": ours[key]}
+               for key, e in roster.items() if key in ours and key not in seen]
+    return {"agree": agree, "wrong": wrong, "unknown": unknown, "missing": missing,
+            "checked": len(entries)}

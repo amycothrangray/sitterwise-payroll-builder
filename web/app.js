@@ -1008,7 +1008,11 @@ VIEWS.roster = () => {
           to load them in bulk — each one is typed into that person's OnPay profile by hand.
           The app picks the numbers and keeps them, so both ends match.</p>
       </div>
-      <button class="btn" onclick="assignClockUsers()">Give everyone a number</button>
+      <div class="row" style="gap:8px">
+        <button class="btn" onclick="assignClockUsers()">Give everyone a number</button>
+        <button class="btn btn-ghost" onclick="$('#clockcheck').click()">Check against OnPay</button>
+        <input type="file" id="clockcheck" accept=".csv,.xlsx" hidden onchange="checkClockUsers(this)">
+      </div>
     </div>
     <div id="clockusers"></div>
   </div>
@@ -1097,6 +1101,45 @@ async function assignClockUsers() {
         <button class="btn btn-sm" onclick="copy(${JSON.stringify(list)
           .replace(/"/g, '&quot;')}, this)">Copy</button>
       </div>`;
+  } catch (e) { toast(e.message, true); }
+}
+
+// The numbers read back out of OnPay after somebody typed them in, checked
+// against what the app handed out. A number matching nobody makes that pay
+// line fail to import, which is loud. A number matching somebody else pays
+// one caregiver's hours to another, which is not.
+async function checkClockUsers(input) {
+  const file = input.files[0];
+  if (!file) return;
+  try {
+    const res = await api('/api/roster/clock-users/check', {
+      method: 'POST', headers: { 'X-Filename': encodeURIComponent(file.name) }, body: file,
+    });
+    const danger = res.wrong.filter(w => w.pays_someone_else);
+    $('#clockusers').innerHTML = `
+      ${danger.length ? `<div class="banner bad" style="margin-top:12px">
+        <strong>${plural(danger.length, 'number pays', 'numbers pay')} the wrong caregiver.</strong>
+        Fix ${danger.length === 1 ? 'it' : 'them'} in OnPay before running payroll.</div>` : ''}
+      ${!res.wrong.length && !res.unknown.length && !res.missing.length ? `
+        <div class="banner good" style="margin-top:12px">
+          All ${res.agree.length} match. OnPay and the app agree on every Clock User.</div>` : ''}
+      ${res.wrong.length ? `<div class="tablewrap" style="margin-top:12px"><table>
+        <thead><tr><th>Caregiver</th><th>The app says</th><th>OnPay says</th><th>What that means</th></tr></thead>
+        <tbody>${res.wrong.map(w => `<tr>
+          <td><strong>${esc(w.name)}</strong></td>
+          <td class="mono">${esc(w.ours)}</td>
+          <td class="mono">${esc(w.onpay)}</td>
+          <td>${w.pays_someone_else
+            ? `<span class="pill blocked">Pays the wrong caregiver</span> &mdash; ${esc(w.why)}`
+            : `Their pay line will not import &mdash; ${esc(w.why)}`}</td></tr>`).join('')}
+        </tbody></table></div>` : ''}
+      ${res.missing.length ? `<div class="banner warn" style="margin-top:12px">
+        Not in the file, so ${res.missing.length === 1 ? 'this one was' : 'these were'} not checked:
+        ${esc(res.missing.map(m => `${m.name} (${m.ours})`).join(', '))}.</div>` : ''}
+      ${res.unknown.length ? `<div class="banner warn" style="margin-top:12px">
+        ${plural(res.unknown.length, 'row', 'rows')} could not be matched to the roster:
+        ${esc(res.unknown.map(u => `${u.name} — ${u.why}`).join('; '))}.</div>` : ''}
+      ${res.problems.map(p => `<div class="banner warn">${esc(p)}</div>`).join('')}`;
   } catch (e) { toast(e.message, true); }
 }
 

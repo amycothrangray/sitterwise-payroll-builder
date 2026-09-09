@@ -28,8 +28,8 @@ from . import calsavers, combine, exports, extras, settings_files
 from .engine import Adjustment
 from .importer import import_export
 from .roster import (NOT_IN_ONPAY, READY, RosterEntry, STATUS_LABELS,
-                     assign_clock_users, merge_import, normalise_name,
-                     parse_onpay_employee_export)
+                     assign_clock_users, compare_clock_users, merge_import,
+                     normalise_name, parse_onpay_employee_export)
 from .rules import Rules, RulesError
 from .run import (build_run, half_month_periods, period_label, suggest_period,
                   weeks_in)
@@ -481,6 +481,22 @@ class Handler(BaseHTTPRequestHandler):
                 "already_had_one": sum(1 for e in roster.values()
                                        if e.onpay_clock_user.strip()) - len(assigned),
             })
+
+        if path == "/api/roster/clock-users/check":
+            # The numbers read back out of OnPay, checked against the ones
+            # the app handed out. Nothing is saved - this only reports.
+            target = self._save_upload()
+            try:
+                entries, problems = parse_onpay_employee_export(target)
+            except ValueError as exc:
+                raise ApiError(str(exc))
+            if not entries and problems:
+                raise ApiError(" ".join(problems))
+            report = compare_clock_users(self.store.roster(), entries)
+            self.store.log("clock_users_checked",
+                           f"{target.name}: {len(report['agree'])} agree, "
+                           f"{len(report['wrong'])} wrong, {len(report['missing'])} not read back")
+            return self._json({"ok": True, "problems": problems, **report})
 
         if path == "/api/roster/import":
             return self._import_roster()
