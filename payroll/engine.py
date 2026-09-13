@@ -142,6 +142,13 @@ class CaregiverPayroll:
     adjustment_taxable_total: Decimal
     adjustment_nontaxable_total: Decimal
     uses_multiple_rates: bool
+    # Sitterwise's number for this caregiver, taken from their bookings. It
+    # is what OnPay knows them by, so payroll needs no second number.
+    caregiver_id: str = ""
+    # More than one number under one name in the same payroll. Two people
+    # have been read as one, and nothing below this point can be trusted for
+    # them, so the check stops it rather than paying either.
+    caregiver_id_disagrees: list[str] = field(default_factory=list)
 
     @property
     def hours_worked(self) -> Decimal:
@@ -208,6 +215,8 @@ class CaregiverPayroll:
             "reimbursements": str(self.reimbursements),
             "total_paid": str(self.total_paid),
             "uses_multiple_rates": self.uses_multiple_rates,
+            "caregiver_id": self.caregiver_id,
+            "caregiver_id_disagrees": self.caregiver_id_disagrees,
         }
 
 
@@ -321,6 +330,11 @@ def calculate_caregiver(name: str, key: str, jobs: list[Job], rules: Rules,
     nontaxable_adj = money(sum(
         (Decimal(str(a.new_value or 0)) for a in caregiver_adjustments if not a.taxable), ZERO))
 
+    # Every Sitterwise number seen under this name. One is the normal case.
+    # None happens when the export predates the column. More than one means
+    # two people have been read as one.
+    ids = sorted({j.caregiver_id for j in working if j.caregiver_id})
+
     return CaregiverPayroll(
         key=key,
         name=name,
@@ -342,6 +356,8 @@ def calculate_caregiver(name: str, key: str, jobs: list[Job], rules: Rules,
         adjustment_taxable_total=taxable_adj,
         adjustment_nontaxable_total=nontaxable_adj,
         uses_multiple_rates=len([t for t in tiers if t.hours > 0]) > 1,
+        caregiver_id=ids[0] if len(ids) == 1 else "",
+        caregiver_id_disagrees=ids if len(ids) > 1 else [],
     )
 
 

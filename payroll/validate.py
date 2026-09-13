@@ -275,6 +275,22 @@ def _check_caregiver(caregiver: CaregiverPayroll, roster: dict[str, RosterEntry]
     out: list[Finding] = []
     key, name = caregiver.key, caregiver.name
 
+    if caregiver.caregiver_id_disagrees:
+        # Sitterwise gives every caregiver their own number. Two numbers under
+        # one name means two people have been added up as one - their hours
+        # pooled, and their overtime worked out across both. Nothing about
+        # this caregiver can be trusted, so it stops rather than pays either.
+        numbers = ", ".join(caregiver.caregiver_id_disagrees)
+        out.append(Finding(
+            "caregiver_id_disagrees", STOP,
+            f"{name} is two different people",
+            f"Bookings under this name carry {len(caregiver.caregiver_id_disagrees)} different "
+            f"Sitterwise caregiver numbers ({numbers}), so two people have been added up as "
+            "one. The hours, the overtime and the pay are all wrong for both of them.",
+            "Give one of them a different name in Sitterwise, then upload the export again.",
+            key, name, [j.booking_id for j in caregiver.jobs],
+        ))
+
     if not name:
         out.append(Finding(
             "missing_caregiver", STOP,

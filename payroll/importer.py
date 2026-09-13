@@ -205,6 +205,7 @@ def _build_job(row_number, cell, rules: Rules, today: date) -> Job:
         booking_id=str(cell("booking_id") or "").strip(),
         ulid=str(cell("ulid") or "").strip(),
         caregiver_name=str(cell("caregiver_name") or "").strip(),
+        caregiver_id=_whole_number(cell("caregiver_id")),
         client_name=str(cell("client_name") or "").strip(),
         service_type=str(cell("service_type") or "").strip(),
         location_type=str(cell("location_type") or "").strip(),
@@ -337,6 +338,19 @@ def _set_rate(job: Job, cell, rules: Rules) -> None:
         f"The pay of {job.paid_to_caregiver} over {job.hours_worked} hours does not "
         "match any rate in Settings, so the app could not tell which tier this was."
     )
+
+
+def _whole_number(value) -> str:
+    """A number from a spreadsheet cell, as the digits somebody would type.
+
+    openpyxl hands back 121 as 121.0, and a Clock User of "121.0" matches
+    nothing in OnPay.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
 
 
 def _apply_tier(job: Job, tier: dict, basis: str) -> None:

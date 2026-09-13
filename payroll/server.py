@@ -28,8 +28,9 @@ from . import calsavers, combine, exports, extras, settings_files
 from .engine import Adjustment
 from .importer import import_export
 from .roster import (NOT_IN_ONPAY, READY, RosterEntry, STATUS_LABELS,
-                     assign_clock_users, compare_clock_users, merge_import,
-                     normalise_name, parse_onpay_employee_export)
+                     assign_clock_users, clock_users_from_sitterwise,
+                     compare_clock_users, merge_import, normalise_name,
+                     parse_onpay_employee_export)
 from .rules import Rules, RulesError
 from .run import (build_run, half_month_periods, period_label, suggest_period,
                   weeks_in)
@@ -481,6 +482,30 @@ class Handler(BaseHTTPRequestHandler):
                 "already_had_one": sum(1 for e in roster.values()
                                        if e.onpay_clock_user.strip()) - len(assigned),
             })
+
+        if path == "/api/roster/clock-users/from-sitterwise":
+            # Sitterwise's own caregiver number, used as the Clock User, so a
+            # person is one number in both systems instead of a name here and
+            # an invented number there.
+            runs = store.list_runs()
+            if not runs:
+                raise ApiError("There are no payrolls yet, so there are no Sitterwise "
+                               "caregiver numbers to read. Build a payroll first.")
+            _, run, _ = load_run(store, runs[0]["id"])
+            ids = {c.key: c.caregiver_id for c in run.caregivers if c.caregiver_id}
+            if not ids:
+                raise ApiError(
+                    "The bookings in the latest payroll carry no Sitterwise caregiver "
+                    "numbers. That export predates the Caregiver ID column - take a "
+                    "fresh one out of Sitterwise.")
+            roster = store.roster()
+            report = clock_users_from_sitterwise(roster, ids)
+            for entry in report.pop("changed"):
+                store.upsert_roster_entry(entry, quiet=True)
+            store.log("clock_users_from_sitterwise",
+                      f"{len(report['setting'])} set, {len(report['changing'])} changed "
+                      f"from the payroll of {runs[0]['label']}")
+            return self._json({"ok": True, "run": runs[0]["label"], **report})
 
         if path == "/api/roster/clock-users/check":
             # The numbers read back out of OnPay, checked against the ones

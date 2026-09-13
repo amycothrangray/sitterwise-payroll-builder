@@ -1004,12 +1004,13 @@ VIEWS.roster = () => {
     <div class="spread">
       <div>
         <h3>Clock Users</h3>
-        <p class="muted" style="margin:4px 0 0">OnPay pays on the Clock User, and has no way
-          to load them in bulk — each one is typed into that person's OnPay profile by hand.
-          The app picks the numbers and keeps them, so both ends match.</p>
+        <p class="muted" style="margin:4px 0 0">OnPay pays on the Clock User. Sitterwise
+          already gives every caregiver a number and puts it on every booking — use that one,
+          and a caregiver is the same number in both systems with nothing to keep in step.</p>
       </div>
       <div class="row" style="gap:8px">
-        <button class="btn" onclick="assignClockUsers()">Give everyone a number</button>
+        <button class="btn btn-primary" onclick="clockUsersFromSitterwise()">Use the Sitterwise number</button>
+        <button class="btn btn-ghost" onclick="assignClockUsers()">Make up numbers instead</button>
         <button class="btn btn-ghost" onclick="$('#clockcheck').click()">Check against OnPay</button>
         <input type="file" id="clockcheck" accept=".csv,.xlsx" hidden onchange="checkClockUsers(this)">
       </div>
@@ -1108,6 +1109,48 @@ async function assignClockUsers() {
 // against what the app handed out. A number matching nobody makes that pay
 // line fail to import, which is loud. A number matching somebody else pays
 // one caregiver's hours to another, which is not.
+// Take each caregiver's Clock User from the Sitterwise number already on
+// their bookings. Every number this changes has to be retyped into that
+// person's OnPay profile, so the list is shown plainly rather than tucked
+// into a toast.
+async function clockUsersFromSitterwise() {
+  if (!confirm('Set every caregiver\'s Clock User to their Sitterwise caregiver number?\n\n'
+      + 'Anyone whose number changes has to be updated in OnPay to match, or their pay '
+      + 'line will not import. You will get the list.')) return;
+  try {
+    const res = await api('/api/roster/clock-users/from-sitterwise', { method: 'POST' });
+    S.roster = await api('/api/roster');
+    await render();
+    const retype = res.setting.concat(res.changing);
+    const rows = retype.map(r => `${r.name},${r.now}`).join('\n');
+    $('#clockusers').innerHTML = `
+      <div class="banner good" style="margin-top:12px">
+        Read from the payroll of ${esc(res.run)}.
+        ${res.already.length ? `${res.already.length} already matched. ` : ''}
+        ${retype.length ? plural(retype.length, 'number', 'numbers') + ' to set in OnPay.'
+                        : 'Nothing to change.'}</div>
+      ${res.changing.length ? `<div class="banner warn">
+        ${plural(res.changing.length, 'caregiver has', 'caregivers have')} a different number
+        in OnPay right now. Until you change ${res.changing.length === 1 ? 'it' : 'them'},
+        ${res.changing.length === 1 ? 'that pay line' : 'those pay lines'} will not import.</div>` : ''}
+      ${retype.length ? `<div class="tablewrap"><table>
+        <thead><tr><th>Caregiver</th><th>Was</th><th>Set it to</th></tr></thead>
+        <tbody>${retype.map(r => `<tr>
+          <td><strong>${esc(r.name)}</strong></td>
+          <td class="mono faint">${r.was ? esc(r.was) : '—'}</td>
+          <td class="mono"><strong>${esc(r.now)}</strong></td></tr>`).join('')}
+        </tbody></table></div>
+      <div class="payline" style="align-items:flex-start;margin-top:10px">
+        <pre class="payline-note" style="white-space:pre-wrap;margin:0">${esc(rows)}</pre>
+        <button class="btn btn-sm" onclick="copy(${JSON.stringify(rows)
+          .replace(/"/g, '&quot;')}, this)">Copy</button>
+      </div>` : ''}
+      ${res.no_id.length ? `<div class="banner warn">
+        No Sitterwise number on this payroll's bookings for:
+        ${esc(res.no_id.join(', '))}. They keep whatever number they have.</div>` : ''}`;
+  } catch (e) { toast(e.message, true); }
+}
+
 async function checkClockUsers(input) {
   const file = input.files[0];
   if (!file) return;

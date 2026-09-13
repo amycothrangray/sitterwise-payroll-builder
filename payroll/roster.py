@@ -491,6 +491,44 @@ def assign_clock_users(roster: dict[str, RosterEntry],
     return assigned
 
 
+def clock_users_from_sitterwise(roster: dict[str, RosterEntry],
+                               ids: dict[str, str]) -> dict:
+    """Make each caregiver's Clock User their Sitterwise caregiver number.
+
+    Sitterwise already gives every caregiver a number, it is on every booking,
+    and it is unique. Using it as the OnPay Clock User means one number for a
+    person everywhere, nothing to invent, nothing to keep in step, and a new
+    caregiver arriving needs no payroll setup at all.
+
+    `ids` is caregiver key to Sitterwise number, taken from a payroll run.
+    A number already set to something else is reported and changed - the
+    caller shows the list before anything is saved, because every one of
+    these has to be retyped into OnPay to match.
+    """
+    setting, changing, already, no_id = [], [], [], []
+    taken = {e.onpay_clock_user.strip(): e.display_name for e in roster.values()
+             if e.onpay_clock_user.strip()}
+
+    for key, entry in sorted(roster.items(), key=lambda kv: kv[1].display_name.casefold()):
+        number = str(ids.get(key, "")).strip()
+        if not number:
+            no_id.append(entry.display_name)
+            continue
+        was = entry.onpay_clock_user.strip()
+        if was == number:
+            already.append({"name": entry.display_name, "clock_user": number})
+            continue
+        row = {"name": entry.display_name, "was": was, "now": number}
+        (changing if was else setting).append(row)
+        taken.pop(was, None)
+        entry.onpay_clock_user = number
+
+    return {"setting": setting, "changing": changing, "already": already,
+            "no_id": no_id,
+            "changed": [e for e in roster.values()
+                        if e.display_name in {r["name"] for r in setting + changing}]}
+
+
 def compare_clock_users(roster: dict[str, RosterEntry],
                         entries: list[RosterEntry]) -> dict:
     """Check the Clock Users in OnPay against the ones the app handed out.

@@ -18,6 +18,11 @@ class Job:
     booking_id: str
     ulid: str
     caregiver_name: str
+    # Sitterwise's own number for this caregiver, on every booking. Unique,
+    # already there, and the same number that goes in OnPay as the Clock
+    # User - so a caregiver is one number everywhere instead of a name in
+    # one system and an invented number in another.
+    caregiver_id: str
     client_name: str
     service_type: str
     location_type: str
