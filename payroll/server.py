@@ -29,8 +29,8 @@ from .engine import Adjustment
 from .importer import import_export
 from .roster import (NOT_IN_ONPAY, READY, RosterEntry, STATUS_LABELS,
                      assign_clock_users, clock_users_from_sitterwise,
-                     compare_clock_users, merge_import, normalise_name,
-                     parse_onpay_employee_export)
+                     compare_clock_users, confirm_setup, merge_import,
+                     normalise_name, parse_onpay_employee_export)
 from .rules import Rules, RulesError
 from .run import (build_run, half_month_periods, period_label, suggest_period,
                   weeks_in)
@@ -481,6 +481,30 @@ class Handler(BaseHTTPRequestHandler):
                              for e in assigned],
                 "already_had_one": sum(1 for e in roster.values()
                                        if e.onpay_clock_user.strip()) - len(assigned),
+            })
+
+        if path == "/api/roster/confirm-setup":
+            # Somebody has looked in OnPay and found these people there. The
+            # app cannot know that on its own - a Clock User on a booking does
+            # not prove OnPay holds it - so it is recorded as what it is.
+            runs = store.list_runs()
+            if not runs:
+                raise ApiError("There are no payrolls yet, so there is nobody to confirm.")
+            _, run, _ = load_run(store, runs[0]["id"])
+            roster = store.roster()
+            changed = confirm_setup(roster, [c.key for c in run.caregivers])
+            for entry in changed:
+                store.upsert_roster_entry(entry, quiet=True)
+            if changed:
+                store.log("roster_confirmed",
+                          f"{len(changed)} confirmed as set up in OnPay, from the payroll "
+                          f"of {runs[0]['label']}")
+            return self._json({
+                "ok": True, "run": runs[0]["label"],
+                "confirmed": [e.display_name for e in changed],
+                "still_waiting": sorted(
+                    e.display_name for e in roster.values()
+                    if e.source == "added_automatically" and e.status != READY),
             })
 
         if path == "/api/roster/clock-users/from-sitterwise":

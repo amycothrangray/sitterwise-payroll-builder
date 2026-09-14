@@ -141,3 +141,48 @@ class MovingTheRosterOntoTheSitterwiseNumber(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConfirmingSomebodyIsSetUpInOnPay(unittest.TestCase):
+    """The app adds a caregiver to the roster the first time it sees them work
+    and marks them "setup incomplete" - which means nobody has told it yet,
+    not that they are missing from OnPay. Only a person can close that gap: a
+    Clock User on a booking does not prove OnPay holds it."""
+
+    def setUp(self):
+        from payroll.roster import READY, SETUP_INCOMPLETE, confirm_setup
+        self.READY, self.SETUP_INCOMPLETE, self.confirm = READY, SETUP_INCOMPLETE, confirm_setup
+
+    def auto(self, key, name):
+        return RosterEntry(key, name, status=self.SETUP_INCOMPLETE,
+                           source="added_automatically",
+                           note="Added automatically - confirm their OnPay setup")
+
+    def test_it_confirms_the_ones_the_app_added_itself(self):
+        roster = {"a": self.auto("a", "Abigail Currie")}
+        changed = self.confirm(roster, ["a"])
+        self.assertEqual([e.display_name for e in changed], ["Abigail Currie"])
+        self.assertEqual(roster["a"].status, self.READY)
+
+    def test_the_apps_own_placeholder_note_goes_with_it(self):
+        roster = {"a": self.auto("a", "Abigail Currie")}
+        self.confirm(roster, ["a"])
+        self.assertEqual(roster["a"].note, "")
+
+    def test_a_status_somebody_set_by_hand_is_untouched(self):
+        """Marking somebody "not in OnPay" is a deliberate act and blocks
+        payroll. Confirming a batch must never quietly undo it."""
+        from payroll.roster import NOT_IN_ONPAY
+        roster = {"j": RosterEntry("j", "June Salter", status=NOT_IN_ONPAY, source="manual")}
+        self.assertEqual(self.confirm(roster, ["j"]), [])
+        self.assertEqual(roster["j"].status, NOT_IN_ONPAY)
+
+    def test_only_the_caregivers_asked_about_are_touched(self):
+        roster = {"a": self.auto("a", "Abigail Currie"), "z": self.auto("z", "Zara Quinn")}
+        self.confirm(roster, ["a"])
+        self.assertEqual(roster["z"].status, self.SETUP_INCOMPLETE)
+
+    def test_confirming_twice_changes_nothing_the_second_time(self):
+        roster = {"a": self.auto("a", "Abigail Currie")}
+        self.confirm(roster, ["a"])
+        self.assertEqual(self.confirm(roster, ["a"]), [])

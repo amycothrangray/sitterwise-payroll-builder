@@ -491,6 +491,31 @@ def assign_clock_users(roster: dict[str, RosterEntry],
     return assigned
 
 
+def confirm_setup(roster: dict[str, RosterEntry], keys: list[str]) -> list[RosterEntry]:
+    """Record that these caregivers really are set up in OnPay.
+
+    The app adds somebody to the roster the first time it sees them working
+    and marks them "setup incomplete", which means "nobody has told the app
+    yet" rather than "not set up". Only a person can close that gap: having a
+    Clock User does not prove OnPay knows it. So this is somebody saying they
+    have looked, and only touches the entries the app added for itself - a
+    status set by hand is left exactly as it was.
+    """
+    changed = []
+    for key in keys:
+        entry = roster.get(key)
+        if not entry or entry.source != "added_automatically":
+            continue
+        if entry.status == READY:
+            continue
+        entry.status = READY
+        entry.source = "confirmed"
+        if entry.note.startswith("Added automatically"):
+            entry.note = ""
+        changed.append(entry)
+    return changed
+
+
 def clock_users_from_sitterwise(roster: dict[str, RosterEntry],
                                ids: dict[str, str]) -> dict:
     """Make each caregiver's Clock User their Sitterwise caregiver number.

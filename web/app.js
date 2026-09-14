@@ -1019,8 +1019,11 @@ VIEWS.roster = () => {
   </div>
 
   ${attention.length ? `<div class="banner warn">
-    ${plural(attention.length, 'caregiver is', 'caregivers are')} not fully set up:
-    ${esc(attention.map(e => e.display_name).join(', '))}.</div>` : ''}
+    <p style="margin:0 0 8px">The app has not been told whether
+      ${plural(attention.length, 'this caregiver is', 'these caregivers are')} set up in OnPay:
+      ${esc(attention.map(e => e.display_name).join(', '))}.</p>
+    <button class="btn btn-sm" onclick="confirmSetup()">I have checked — they are in OnPay</button>
+  </div>` : ''}
 
   <div class="tablewrap tall">
     <table><thead><tr><th>Caregiver</th><th>OnPay status</th><th>Clock User</th>
@@ -1113,6 +1116,23 @@ async function assignClockUsers() {
 // their bookings. Every number this changes has to be retyped into that
 // person's OnPay profile, so the list is shown plainly rather than tucked
 // into a toast.
+// The app adds somebody to the roster the first time it sees them working
+// and marks them "setup incomplete", meaning nobody has told it yet. Only a
+// person can close that: a Clock User on a booking does not prove OnPay
+// holds it. So this records that somebody looked.
+async function confirmSetup() {
+  if (!confirm('Confirm that everyone in the latest payroll is set up in OnPay?\n\n'
+      + 'Only say yes if you have actually looked. The app cannot check this itself, '
+      + 'and it is what stops someone being paid who has no OnPay record.')) return;
+  try {
+    const res = await api('/api/roster/confirm-setup', { method: 'POST' });
+    S.roster = await api('/api/roster');
+    await render();
+    toast(res.confirmed.length
+      ? `${res.confirmed.length} confirmed` : 'Nothing left to confirm');
+  } catch (e) { toast(e.message, true); }
+}
+
 async function clockUsersFromSitterwise() {
   if (!confirm('Set every caregiver\'s Clock User to their Sitterwise caregiver number?\n\n'
       + 'Anyone whose number changes has to be updated in OnPay to match, or their pay '

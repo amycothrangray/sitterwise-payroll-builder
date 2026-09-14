@@ -124,8 +124,9 @@ def _check_unconfirmed_roster(caregivers: list[CaregiverPayroll],
         f"The app added them to the roster itself when it saw them in the export, so it does "
         f"not yet know whether they can actually be paid. Between them they are owed ${owed}. "
         + (", ".join(names[:6]) + (" and others." if len(names) > 6 else ".")),
-        "Import your employee list from OnPay on the Roster screen - that sets everyone at "
-        "once. Anyone genuinely not in OnPay can be marked so, which will then block payroll.",
+        "Once you have checked they are in OnPay, the Roster screen confirms everyone in "
+        "this payroll at once. Anyone genuinely not in OnPay can be marked so, which will "
+        "then block payroll.",
         booking_ids=[j.booking_id for c in unconfirmed for j in c.jobs][:60],
     )]
 
