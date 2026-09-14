@@ -169,6 +169,30 @@ class ConfirmingSomebodyIsSetUpInOnPay(unittest.TestCase):
         self.confirm(roster, ["a"])
         self.assertEqual(roster["a"].note, "")
 
+    def test_it_confirms_people_who_came_from_the_employee_list_too(self):
+        """Importing OnPay's employee list leaves people at "setup
+        incomplete" - that export carries no Clock User, so it confirms
+        nobody. Skipping them left almost the whole roster stuck."""
+        roster = {"b": RosterEntry("b", "Angela Hanson", status=self.SETUP_INCOMPLETE,
+                                   source="onpay_import")}
+        self.confirm(roster, ["b"])
+        self.assertEqual(roster["b"].status, self.READY)
+
+    def test_it_confirms_somebody_added_by_hand_too(self):
+        roster = {"c": RosterEntry("c", "Anna Lucero", status=self.SETUP_INCOMPLETE,
+                                   source="manual")}
+        self.confirm(roster, ["c"])
+        self.assertEqual(roster["c"].status, self.READY)
+
+    def test_a_direct_deposit_flag_is_not_swept_up(self):
+        """Confirming somebody exists in OnPay says nothing about whether
+        their bank details are in."""
+        from payroll.roster import DIRECT_DEPOSIT_INCOMPLETE
+        roster = {"e": RosterEntry("e", "Eve Marsh", status=DIRECT_DEPOSIT_INCOMPLETE,
+                                   source="onpay_import")}
+        self.assertEqual(self.confirm(roster, ["e"]), [])
+        self.assertEqual(roster["e"].status, DIRECT_DEPOSIT_INCOMPLETE)
+
     def test_a_status_somebody_set_by_hand_is_untouched(self):
         """Marking somebody "not in OnPay" is a deliberate act and blocks
         payroll. Confirming a batch must never quietly undo it."""

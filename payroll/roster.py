@@ -494,19 +494,25 @@ def assign_clock_users(roster: dict[str, RosterEntry],
 def confirm_setup(roster: dict[str, RosterEntry], keys: list[str]) -> list[RosterEntry]:
     """Record that these caregivers really are set up in OnPay.
 
-    The app adds somebody to the roster the first time it sees them working
-    and marks them "setup incomplete", which means "nobody has told the app
-    yet" rather than "not set up". Only a person can close that gap: having a
-    Clock User does not prove OnPay knows it. So this is somebody saying they
-    have looked, and only touches the entries the app added for itself - a
-    status set by hand is left exactly as it was.
+    "Setup incomplete" means "nobody has told the app yet", not "not set up".
+    Only a person can close that gap: having a Clock User does not prove OnPay
+    knows it. So this is somebody saying they have looked.
+
+    It goes by that status and not by where the entry came from. Importing
+    OnPay's employee list leaves people sitting at "setup incomplete" too -
+    that export carries no Clock User, so it cannot confirm anyone - and a
+    button that skipped them left almost the whole roster unconfirmed with no
+    way to say otherwise.
     """
     changed = []
     for key in keys:
         entry = roster.get(key)
-        if not entry or entry.source != "added_automatically":
-            continue
-        if entry.status == READY:
+        # Only the "nobody has told the app yet" state is somebody's to close.
+        # Not "not in OnPay", which is a deliberate act and blocks payroll on
+        # purpose. Not "direct deposit incomplete" either - that is a fact
+        # about their bank details, and confirming they exist in OnPay says
+        # nothing about it.
+        if not entry or entry.status != SETUP_INCOMPLETE:
             continue
         entry.status = READY
         entry.source = "confirmed"
