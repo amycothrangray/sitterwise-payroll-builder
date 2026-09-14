@@ -1121,15 +1121,17 @@ async function assignClockUsers() {
 // person can close that: a Clock User on a booking does not prove OnPay
 // holds it. So this records that somebody looked.
 async function confirmSetup() {
-  if (!confirm('Confirm that everyone in the latest payroll is set up in OnPay?\n\n'
+  if (!confirm('Confirm that every caregiver on the roster is set up in OnPay?\n\n'
       + 'Only say yes if you have actually looked. The app cannot check this itself, '
-      + 'and it is what stops someone being paid who has no OnPay record.')) return;
+      + 'and it is what stops someone being paid who has no OnPay record.\n\n'
+      + 'Anyone you have marked "Not in OnPay" stays that way.')) return;
   try {
     const res = await api('/api/roster/confirm-setup', { method: 'POST' });
     S.roster = await api('/api/roster');
     await render();
     toast(res.confirmed.length
-      ? `${res.confirmed.length} confirmed` : 'Nothing left to confirm');
+      ? `${res.confirmed.length} confirmed as set up in OnPay`
+      : 'Nothing left to confirm');
   } catch (e) { toast(e.message, true); }
 }
 

@@ -79,6 +79,7 @@ def run_checks(caregivers: list[CaregiverPayroll], all_jobs: list[Job],
     findings += _check_data_gaps(period_jobs, rules)
     findings += _check_unconfirmed_roster(caregivers, roster)
     findings += _summarise_overtime(caregivers)
+    findings += _summarise_bonus_with_overtime(caregivers, rules)
     return _sorted(findings)
 
 
@@ -102,6 +103,35 @@ def _summarise_overtime(caregivers: list[CaregiverPayroll]) -> list[Finding]:
         + (" and others." if len(with_ot) > 8 else "."),
         "Open a caregiver's card to see exactly which days caused it.",
         booking_ids=[b for c in with_ot for b in _ot_bookings(c) + _dt_bookings(c)][:60],
+    )]
+
+
+def _summarise_bonus_with_overtime(caregivers: list[CaregiverPayroll],
+                                   rules: Rules) -> list[Finding]:
+    """One decision, not one per caregiver.
+
+    A bonus somebody earned has to raise their overtime rate; a gift does
+    not. That is the same question about the same kind of bonus every week,
+    so asking it eleven separate times buried everything else on the screen.
+    """
+    if not rules.warn_bonus_with_overtime:
+        return []
+    affected = [c for c in caregivers
+                if c.bonus > 0 and (c.ot_hours > 0 or c.dt_hours > 0)]
+    if not affected:
+        return []
+    total = sum((c.bonus for c in affected), ZERO)
+    listing = ", ".join(f"{c.name} {c.bonus}" for c in affected[:6])
+    return [Finding(
+        "bonus_with_overtime", REVIEW,
+        f"{len(affected)} caregivers have a bonus and overtime in the same week",
+        f"{total} in bonuses between them. If those bonuses are earned rather than a gift, "
+        "California generally requires them to raise the overtime rate, and the app has not "
+        f"done that. {listing}" + (" and others." if len(affected) > 6 else "."),
+        "Decide once whether Sitterwise bonuses are discretionary. If they are, this can be "
+        "switched off in Settings. If they are not, add the extra as a manual adjustment.",
+        booking_ids=[j.booking_id for c in affected for j in c.jobs
+                     if j.bonus or j.lifesaver_bonus][:60],
     )]
 
 
@@ -359,18 +389,6 @@ def _check_caregiver(caregiver: CaregiverPayroll, roster: dict[str, RosterEntry]
             key, name, _ot_bookings(caregiver) + _dt_bookings(caregiver),
         ))
 
-    if rules.warn_bonus_with_overtime and caregiver.bonus > 0 and (
-            caregiver.ot_hours > 0 or caregiver.dt_hours > 0):
-        out.append(Finding(
-            "bonus_with_overtime", REVIEW,
-            f"{name} has both a bonus and overtime",
-            f"{name} received {caregiver.bonus} in bonuses and worked overtime in the same "
-            "period. If those bonuses are earned rather than a gift, California generally "
-            "requires them to raise the overtime rate. The app has not done that.",
-            "Decide whether these bonuses are discretionary. If not, add the extra as a manual adjustment.",
-            key, name, [j.booking_id for j in caregiver.jobs if j.bonus or j.lifesaver_bonus],
-        ))
-
     for week in caregiver.weeks:
         if week.crossed_disabled_weekly_threshold:
             out.append(Finding(
@@ -612,15 +630,18 @@ def _check_data_gaps(jobs: list[Job], rules: Rules) -> list[Finding]:
     if untipped:
         who = sorted({j.display_name for j in untipped if j.display_name})
         out.append(Finding(
-            "tips_not_recorded", REVIEW,
-            f"{len(untipped)} finished jobs have no tip recorded at all",
-            "In this export the tip field is only ever filled in once a job is marked paid. "
-            f"These {len(untipped)} jobs are finished but not yet marked paid, so their tip "
-            "field is empty rather than zero - which means a tip could be missing rather "
-            f"than genuinely absent. Affects {len(who)} caregivers: "
+            # Most jobs have no tip, and the tip field only fills in once a
+            # job is marked paid - so this fired on most of the week, every
+            # week, and asked for something to be done about nothing. Kept as
+            # a note, because blank is not quite the same as zero, but it is
+            # not a thing to work through.
+            "tips_not_recorded", NOTE,
+            f"{len(untipped)} finished jobs have no tip on them",
+            f"Normal - most jobs have no tip. Worth knowing only because the tip field "
+            f"fills in when a job is marked paid, so on a job that is finished but not yet "
+            f"marked paid an actual tip would look the same as no tip. {len(who)} caregivers: "
             + ", ".join(who[:6]) + (" and others." if len(who) > 6 else "."),
-            "Mark these jobs paid in Sitterwise so tips get recorded, then upload again. "
-            "Any tip you know about can be added here as a manual adjustment.",
+            "Nothing, unless you know of a tip that is missing - that can be added here.",
             booking_ids=[j.booking_id for j in untipped],
         ))
 

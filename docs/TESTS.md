@@ -42,7 +42,7 @@ spans two of those weeks so the weekly grouping gets exercised.
 | **Reimbursements** | **$264.94** |
 | **Total being paid** | **$6300.43** |
 
-Payroll check: **9 ready, 11 needing a look, 6 that cannot be paid**.
+Payroll check: **10 ready, 10 needing a look, 6 that cannot be paid**.
 
 Reconciliation: 47 jobs dated in this period, 45 paid, 45 accounted for. 1 left out (status is cancelled). 1 left out (worked but never closed out in sitterwise). Balances: **yes**.
 
@@ -305,10 +305,6 @@ Week beginning 2026-08-03. One rate this week, so the regular rate is $23.00 an 
 | Bonuses | $15.00 |
 | **Taxable earnings** | **$233.50** |
 | **Total being paid** | **$233.50** |
-
-**What the payroll check says:**
-
-- **Needs a look** - Lena Voss has both a bonus and overtime. Lena Voss received 15.00 in bonuses and worked overtime in the same period. If those bonuses are earned rather than a gift, California generally requires them to raise the overtime rate. The app has not done that.
 
 ---
 

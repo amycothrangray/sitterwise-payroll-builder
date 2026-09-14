@@ -487,24 +487,23 @@ class Handler(BaseHTTPRequestHandler):
             # Somebody has looked in OnPay and found these people there. The
             # app cannot know that on its own - a Clock User on a booking does
             # not prove OnPay holds it - so it is recorded as what it is.
-            runs = store.list_runs()
-            if not runs:
-                raise ApiError("There are no payrolls yet, so there is nobody to confirm.")
-            _, run, _ = load_run(store, runs[0]["id"])
             roster = store.roster()
-            changed = confirm_setup(roster, [c.key for c in run.caregivers])
+            # The whole roster, not only whoever happened to work this week.
+            # Somebody checking OnPay checks their caregivers, and a warning
+            # that will not go away is a warning people learn to ignore.
+            changed = confirm_setup(roster, list(roster))
             for entry in changed:
                 store.upsert_roster_entry(entry, quiet=True)
             if changed:
                 store.log("roster_confirmed",
-                          f"{len(changed)} confirmed as set up in OnPay, from the payroll "
-                          f"of {runs[0]['label']}")
+                          f"{len(changed)} confirmed as set up in OnPay: "
+                          + ", ".join(e.display_name for e in changed))
             return self._json({
-                "ok": True, "run": runs[0]["label"],
+                "ok": True,
                 "confirmed": [e.display_name for e in changed],
                 "still_waiting": sorted(
-                    e.display_name for e in roster.values()
-                    if e.source == "added_automatically" and e.status != READY),
+                    f"{e.display_name} ({e.status_label})" for e in roster.values()
+                    if e.needs_attention),
             })
 
         if path == "/api/roster/clock-users/from-sitterwise":

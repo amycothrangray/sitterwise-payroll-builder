@@ -717,34 +717,10 @@ def all_exports(run: PayrollRun, roster: dict[str, RosterEntry],
                 entered: dict[str, bool] | None = None) -> list[dict]:
     stamp = _safe(run.label)
     onpay_csv, skipped = onpay_import_csv(run, roster)
+    # The one to upload comes first. It is what the whole screen is for,
+    # and it used to sit at the bottom under six files nobody needed that
+    # day - so the top one got picked and OnPay refused it.
     return [
-        {"key": "detail", "name": "Payroll detail",
-         "description": "Every job, with the hours, rate and pay behind it.",
-         "filename": f"payroll-detail-{stamp}.csv", "content": payroll_detail_csv(run)},
-        {"key": "onpay_entry", "name": "OnPay worksheet - to type from",
-         "description": ("For typing from, not for uploading - OnPay will not take "
-                         "this one. One row per caregiver, holding the figures you "
-                         "type in. Regular is smaller than the hours worked wherever "
-                         "there is overtime, because OnPay wants those hours on their "
-                         "own."),
-         "filename": f"TYPE-FROM-THIS-do-not-upload-{stamp}.csv",
-         "content": onpay_entry_csv(run, roster, entered)},
-        {"key": "summary", "name": "Payroll summary",
-         "description": "The totals, and the proof that nothing went missing.",
-         "filename": f"payroll-summary-{stamp}.csv", "content": payroll_summary_csv(run)},
-        {"key": "exceptions", "name": "Things needing attention",
-         "description": "Everything the payroll check found, and what to do about it.",
-         "filename": f"payroll-exceptions-{stamp}.csv", "content": exceptions_csv(run)},
-        {"key": "caregiver", "name": "Caregiver detail",
-         "description": "A readable breakdown per caregiver, with the overtime working shown.",
-         "filename": f"caregiver-detail-{stamp}.csv",
-         "content": caregiver_detail_csv(run, roster)},
-        {"key": "onpay_lines", "name": "OnPay lines and notes",
-         "description": ("Every pay line with the note to type beside it, so each "
-                         "caregiver can see what she is being paid for. OnPay's "
-                         "import file has no room for notes."),
-         "filename": f"onpay-lines-{stamp}.csv",
-         "content": onpay_lines_csv(run, roster)},
         {"key": "onpay_import", "name": "OnPay import file - upload this one",
          "description": ("The file to upload into OnPay. One row per pay item, in "
                          "the format OnPay specified."
@@ -753,4 +729,31 @@ def all_exports(run: PayrollRun, roster: dict[str, RosterEntry],
          "filename": f"UPLOAD-THIS-TO-ONPAY-{stamp}.csv", "content": onpay_csv,
          "skipped": skipped,
          "problems": onpay_import_check(run, roster)},
+        {"key": "onpay_entry", "name": "OnPay worksheet - to type from",
+         "description": ("For typing from, not for uploading - OnPay will not take "
+                         "this one. One row per caregiver, holding the figures you "
+                         "type in. Regular is smaller than the hours worked wherever "
+                         "there is overtime, because OnPay wants those hours on their "
+                         "own."),
+         "filename": f"TYPE-FROM-THIS-do-not-upload-{stamp}.csv",
+         "content": onpay_entry_csv(run, roster, entered)},
+        {"key": "onpay_lines", "name": "OnPay lines and notes",
+         "description": ("Every pay line with the note to type beside it, so each "
+                         "caregiver can see what she is being paid for. OnPay's "
+                         "import file has no room for notes."),
+         "filename": f"onpay-lines-{stamp}.csv",
+         "content": onpay_lines_csv(run, roster)},
+        {"key": "exceptions", "name": "Things needing attention",
+         "description": "Everything the payroll check found, and what to do about it.",
+         "filename": f"payroll-exceptions-{stamp}.csv", "content": exceptions_csv(run)},
+        {"key": "summary", "name": "Payroll summary",
+         "description": "The totals, and the proof that nothing went missing.",
+         "filename": f"payroll-summary-{stamp}.csv", "content": payroll_summary_csv(run)},
+        {"key": "detail", "name": "Payroll detail",
+         "description": "Every job, with the hours, rate and pay behind it.",
+         "filename": f"payroll-detail-{stamp}.csv", "content": payroll_detail_csv(run)},
+        {"key": "caregiver", "name": "Caregiver detail",
+         "description": "A readable breakdown per caregiver, with the overtime working shown.",
+         "filename": f"caregiver-detail-{stamp}.csv",
+         "content": caregiver_detail_csv(run, roster)},
     ]

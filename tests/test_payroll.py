@@ -298,7 +298,12 @@ class TestOvertime(PayrollCase):
         self.assertEqual(lena.ot_premium, money("11.50"))
         self.assertEqual(lena.bonus, money("15.00"))
         self.assertEqual(lena.total_paid, money("233.50"))
-        self.assertIn("bonus_with_overtime", self.codes("Lena Voss"))
+        # Raised once for the whole payroll rather than per caregiver - it is
+        # one decision about one kind of bonus - but Lena has to be named in it.
+        flag = next((f for f in self.payroll.findings
+                     if f.code == "bonus_with_overtime"), None)
+        self.assertIsNotNone(flag, "a bonus beside overtime was not flagged at all")
+        self.assertIn("Lena Voss", flag.detail)
 
     def test_workweek_boundary(self):
         # Sitterwise pays Monday to Sunday, so Aug 3 (a Monday) starts its own
