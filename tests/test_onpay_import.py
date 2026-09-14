@@ -9,6 +9,7 @@ Run them with:  python3 -m unittest discover -s tests -v
 from __future__ import annotations
 
 import csv
+import dataclasses
 import io
 import sys
 import unittest
@@ -188,12 +189,44 @@ class OnPayImportFile(unittest.TestCase):
             if row["id"] == "22":
                 self.assertEqual(row["ob3_qualified_ot"], row["hours"])
 
-    def test_somebody_with_no_clock_user_is_named_rather_than_dropped(self):
+    def test_an_empty_roster_number_falls_back_to_the_sitterwise_one(self):
+        """Sitterwise's caregiver number is the Clock User, so a blank on the
+        roster is not a gap - there is nothing to fill in by hand."""
         roster = dict(self.roster)
         victim = self.person("Tess Okafor")
         roster[victim.key] = RosterEntry(victim.key, victim.name, READY,
                                          onpay_clock_user="")
-        _, skipped = exports.onpay_import_csv(self.payroll, roster)
+        text, skipped = exports.onpay_import_csv(self.payroll, roster)
+        self.assertNotIn(victim.name, skipped)
+        rows = list(csv.DictReader(io.StringIO(text)))
+        self.assertIn(victim.caregiver_id,
+                      [r["emp_num"] for r in rows])
+
+    def test_a_number_on_the_roster_beats_the_sitterwise_one(self):
+        """Where OnPay genuinely holds somebody under something else, the
+        roster is where that goes, and payroll must not quietly disagree."""
+        roster = dict(self.roster)
+        victim = self.person("Tess Okafor")
+        roster[victim.key] = RosterEntry(victim.key, victim.name, READY,
+                                         onpay_clock_user="7777")
+        text, _ = exports.onpay_import_csv(self.payroll, roster)
+        rows = list(csv.DictReader(io.StringIO(text)))
+        self.assertIn("7777", [r["emp_num"] for r in rows])
+        self.assertNotIn(victim.caregiver_id, [r["emp_num"] for r in rows])
+
+    def test_nobody_is_dropped_silently_when_there_is_no_number_anywhere(self):
+        """An export from before the Caregiver ID column, and a blank roster.
+        Then there really is nothing, and they have to be named."""
+        roster = dict(self.roster)
+        victim = self.person("Tess Okafor")
+        roster[victim.key] = RosterEntry(victim.key, victim.name, READY,
+                                         onpay_clock_user="")
+        nameless = dataclasses.replace(victim, caregiver_id="")
+        payroll = dataclasses.replace(
+            self.payroll,
+            caregivers=[nameless if c.key == victim.key else c
+                        for c in self.payroll.caregivers])
+        _, skipped = exports.onpay_import_csv(payroll, roster)
         self.assertIn(victim.name, skipped)
 
 

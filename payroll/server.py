@@ -152,7 +152,7 @@ def run_payload(store: Store, run_id: str) -> dict:
             "amount": str(exports.onpay_row_total(row)),
             "note": row.get("note", ""),
         } for row in exports.onpay_pay_rows(
-            caregiver, entry.onpay_clock_user if entry else "", mapping)]
+            caregiver, exports.clock_user_for(caregiver, entry), mapping)]
         caregivers.append(data)
 
     return {

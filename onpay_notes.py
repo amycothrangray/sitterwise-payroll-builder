@@ -60,7 +60,7 @@ def pay_lines(store: Store, run_id: str) -> tuple[dict, list[dict]]:
         if statuses.get(caregiver.key) == "blocked":
             continue                      # not in OnPay at all, so nothing to note
         entry = roster.get(caregiver.key)
-        clock = entry.onpay_clock_user if entry else ""
+        clock = exports.clock_user_for(caregiver, entry)
         if not clock:
             continue                      # entered by hand; the app says who
         for row in exports.onpay_pay_rows(caregiver, clock, mapping):

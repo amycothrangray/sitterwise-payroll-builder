@@ -80,6 +80,22 @@ def _basis(basis: str) -> str:
 
 # --- 2. the OnPay entry grid ------------------------------------------------
 
+def clock_user_for(caregiver, roster_entry) -> str:
+    """The number OnPay knows this caregiver by.
+
+    Sitterwise gives every caregiver a number and puts it on every booking,
+    and that is the number set as their Clock User in OnPay - one number for
+    a person in both systems, with nothing to keep in step and no setup for
+    somebody who starts next week.
+
+    A number recorded on the roster still wins. That is where a person goes
+    when OnPay genuinely holds somebody under something else, and a payroll
+    file must never quietly disagree with what a person put there.
+    """
+    recorded = roster_entry.onpay_clock_user.strip() if roster_entry else ""
+    return recorded or (caregiver.caregiver_id or "")
+
+
 def onpay_entry_csv(run: PayrollRun, roster: dict[str, RosterEntry],
                     entered: dict[str, bool] | None = None) -> str:
     """One row per caregiver, holding the figures OnPay is actually typed.
@@ -102,7 +118,7 @@ def onpay_entry_csv(run: PayrollRun, roster: dict[str, RosterEntry],
     for caregiver in run.caregivers:
         roster_entry = roster.get(caregiver.key)
         rows = onpay_pay_rows(caregiver,
-                              roster_entry.onpay_clock_user if roster_entry else "",
+                              clock_user_for(caregiver, roster_entry),
                               mapping)
         here = {}
         for row in rows:
@@ -128,7 +144,7 @@ def onpay_entry_csv(run: PayrollRun, roster: dict[str, RosterEntry],
         roster_entry = roster.get(caregiver.key)
         here = lines_by_caregiver[caregiver.key]
         row = [caregiver.name,
-               roster_entry.onpay_clock_user if roster_entry else ""]
+               clock_user_for(caregiver, roster_entry)]
         for name in columns:
             line = here.get(name)
             if name in hourly:
@@ -487,7 +503,7 @@ def onpay_lines_csv(run: PayrollRun, roster: dict[str, RosterEntry],
                   "Hours", "Rate", "Amount", "Note to type in OnPay"])
     for caregiver in run.caregivers:
         entry = roster.get(caregiver.key)
-        emp = entry.onpay_clock_user if entry else ""
+        emp = clock_user_for(caregiver, entry)
         if statuses.get(caregiver.key) == "blocked":
             continue
         for row in onpay_pay_rows(caregiver, emp, mapping):
@@ -556,7 +572,7 @@ def onpay_import_check(run: PayrollRun, roster: dict[str, RosterEntry],
                 for text in onpay_mapping_problems(mapping)]
     for caregiver in run.caregivers:
         entry = roster.get(caregiver.key)
-        emp = entry.onpay_clock_user if entry else ""
+        emp = clock_user_for(caregiver, entry)
         if statuses.get(caregiver.key) == "blocked":
             problems.append({
                 "caregiver": caregiver.name,
@@ -615,7 +631,7 @@ def onpay_import_csv(run: PayrollRun, roster: dict[str, RosterEntry],
     skipped: list[str] = []
     for caregiver in run.caregivers:
         entry = roster.get(caregiver.key)
-        emp = entry.onpay_clock_user if entry else ""
+        emp = clock_user_for(caregiver, entry)
         if statuses.get(caregiver.key) == "blocked":
             skipped.append(caregiver.name)
             continue
@@ -668,7 +684,7 @@ def _onpay_values(run: PayrollRun, caregiver: CaregiverPayroll,
         "name": caregiver.name,
         "first_name": parts[0] if parts else "",
         "last_name": " ".join(parts[1:]) if len(parts) > 1 else "",
-        "onpay_clock_user": entry.onpay_clock_user if entry else "",
+        "onpay_clock_user": clock_user_for(caregiver, entry),
         "onpay_employee_id": entry.onpay_employee_id if entry else "",
         "guarantee_hours": caregiver.guarantee_hours,
         "guarantee_pay": caregiver.guarantee_pay,
@@ -705,11 +721,12 @@ def all_exports(run: PayrollRun, roster: dict[str, RosterEntry],
         {"key": "detail", "name": "Payroll detail",
          "description": "Every job, with the hours, rate and pay behind it.",
          "filename": f"payroll-detail-{stamp}.csv", "content": payroll_detail_csv(run)},
-        {"key": "onpay_entry", "name": "OnPay entry sheet",
-         "description": ("One row per caregiver, holding the figures you type into "
-                         "OnPay - not the hours they worked. Regular is smaller than "
-                         "the hours worked wherever there is overtime, because OnPay "
-                         "wants those hours on their own."),
+        {"key": "onpay_entry", "name": "OnPay worksheet - to type from",
+         "description": ("For typing from, not for uploading - OnPay will not take "
+                         "this one. One row per caregiver, holding the figures you "
+                         "type in. Regular is smaller than the hours worked wherever "
+                         "there is overtime, because OnPay wants those hours on their "
+                         "own."),
          "filename": f"onpay-entry-{stamp}.csv",
          "content": onpay_entry_csv(run, roster, entered)},
         {"key": "summary", "name": "Payroll summary",
@@ -728,8 +745,8 @@ def all_exports(run: PayrollRun, roster: dict[str, RosterEntry],
                          "import file has no room for notes."),
          "filename": f"onpay-lines-{stamp}.csv",
          "content": onpay_lines_csv(run, roster)},
-        {"key": "onpay_import", "name": "OnPay import file",
-         "description": ("Upload this straight into OnPay. One row per pay item, in "
+        {"key": "onpay_import", "name": "OnPay import file - upload this one",
+         "description": ("The file to upload into OnPay. One row per pay item, in "
                          "the format OnPay specified."
                          + (f" {len(skipped)} not in it - see below."
                             if skipped else " Everybody who can be paid is in it.")),

@@ -10,6 +10,7 @@ Run them with:  python3 -m unittest discover -s tests -v
 from __future__ import annotations
 
 import csv
+import dataclasses
 import io
 import sys
 import tempfile
@@ -744,11 +745,17 @@ class TestExports(PayrollCase):
         self.assertIn("Expected total employee payments", text)
 
     def test_the_onpay_import_file_leaves_nobody_out_silently(self):
+        """With no number on the roster and none from Sitterwise either,
+        somebody has to be named rather than quietly left out."""
         roster = dict(self.roster)
         first = next(iter(roster))
         roster[first] = RosterEntry(first, roster[first].display_name, READY,
                                     onpay_clock_user="")
-        _, skipped = exports.onpay_import_csv(self.payroll, roster)
+        payroll = dataclasses.replace(
+            self.payroll,
+            caregivers=[dataclasses.replace(c, caregiver_id="") if c.key == first else c
+                        for c in self.payroll.caregivers])
+        _, skipped = exports.onpay_import_csv(payroll, roster)
         self.assertIn(roster[first].display_name, skipped)
 
     def test_the_detail_export_shows_where_each_rate_came_from(self):
