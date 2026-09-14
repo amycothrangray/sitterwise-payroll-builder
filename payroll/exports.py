@@ -727,7 +727,7 @@ def all_exports(run: PayrollRun, roster: dict[str, RosterEntry],
                          "type in. Regular is smaller than the hours worked wherever "
                          "there is overtime, because OnPay wants those hours on their "
                          "own."),
-         "filename": f"onpay-entry-{stamp}.csv",
+         "filename": f"TYPE-FROM-THIS-do-not-upload-{stamp}.csv",
          "content": onpay_entry_csv(run, roster, entered)},
         {"key": "summary", "name": "Payroll summary",
          "description": "The totals, and the proof that nothing went missing.",
@@ -750,7 +750,7 @@ def all_exports(run: PayrollRun, roster: dict[str, RosterEntry],
                          "the format OnPay specified."
                          + (f" {len(skipped)} not in it - see below."
                             if skipped else " Everybody who can be paid is in it.")),
-         "filename": f"onpay-import-{stamp}.csv", "content": onpay_csv,
+         "filename": f"UPLOAD-THIS-TO-ONPAY-{stamp}.csv", "content": onpay_csv,
          "skipped": skipped,
          "problems": onpay_import_check(run, roster)},
     ]
