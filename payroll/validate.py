@@ -262,6 +262,14 @@ def _check_unknown_service_types(jobs: list[Job], rules: Rules) -> list[Finding]
 
 
 def _check_unclosed_jobs(all_jobs: list[Job], period_start, period_end, rules: Rules) -> list[Finding]:
+    """Somebody worked and is about to be left out of payroll.
+
+    A booking in the past that still says "confirmed" was never closed out in
+    Sitterwise. The app will not pay it, because "confirmed" does not mean the
+    job happened. But the person may well have worked, so this stops payroll
+    rather than leaving a quiet note - that is how Ketut Sudiasih nearly went
+    unpaid for 13 September 2026.
+    """
     if not period_start or not period_end:
         return []
     stragglers = [
@@ -272,17 +280,37 @@ def _check_unclosed_jobs(all_jobs: list[Job], period_start, period_end, rules: R
     ]
     if not stragglers:
         return []
-    names = sorted({j.display_name for j in stragglers if j.display_name})
-    return [Finding(
-        "not_closed_out", REVIEW,
-        f"{len(stragglers)} job{'s' if len(stragglers) != 1 else ''} in this period "
-        f"{'were' if len(stragglers) != 1 else 'was'} never closed out",
-        "These jobs are in the past but are still marked \"confirmed\" in Sitterwise, so "
-        f"they are not being paid: {', '.join(names[:8])}"
-        + (" and others." if len(names) > 8 else "."),
-        "If they were worked, mark them completed in Sitterwise and upload the export again.",
-        booking_ids=[j.booking_id for j in stragglers],
-    )]
+
+    by_person: dict[str, list[Job]] = defaultdict(list)
+    for job in stragglers:
+        by_person[job.caregiver_key or job.display_name].append(job)
+
+    out = []
+    for jobs in sorted(by_person.values(), key=lambda js: js[0].display_name or ""):
+        who = jobs[0].display_name or "Someone with no name on the booking"
+        hours = sum((j.hours_paid for j in jobs), ZERO)
+        amount = sum((j.paid_to_caregiver for j in jobs), ZERO)
+        days = ", ".join(f"{j.workday:%b %-d}" for j in jobs)
+        many = len(jobs) != 1
+        out.append(Finding(
+            "not_closed_out", STOP,
+            f"{who} is not being paid for {_plural(len(jobs), 'past job')}",
+            f"{who} has {_plural(len(jobs), 'booking')} in this pay period ({days}) still "
+            f'marked "confirmed" in Sitterwise rather than "completed". That is '
+            f"{hours} hours and ${amount}. The app does not pay confirmed bookings, because "
+            f'"confirmed" does not mean the job happened - so as things stand {who} gets '
+            f"nothing for {'them' if many else 'it'}.",
+            f"Find out whether {who} worked. If so, mark "
+            f"{'those bookings' if many else 'that booking'} completed in Sitterwise and "
+            f"upload the export again. If not, cancel {'them' if many else 'it'} in "
+            "Sitterwise and this will stop asking.",
+            jobs[0].caregiver_key, who, [j.booking_id for j in jobs],
+        ))
+    return out
+
+
+def _plural(count: int, word: str) -> str:
+    return f"{count} {word}" + ("s" if count != 1 else "")
 
 
 def _check_settings(rules: Rules) -> list[Finding]:
