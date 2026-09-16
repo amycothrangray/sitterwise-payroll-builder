@@ -382,6 +382,9 @@ class Handler(BaseHTTPRequestHandler):
         item = next((e for e in listing if e["key"] == key), None)
         if not item:
             raise ApiError("That export does not exist.", 404)
+        if item.get("download_blocked"):
+            raise ApiError("The OnPay file cannot be downloaded yet: " + " ".join(
+                p["problem"] for p in item["problems"] if p.get("blocking")))
         store.log("export_downloaded", item["name"], run_id)
         self._send(200, item["content"].encode("utf-8-sig"), "text/csv; charset=utf-8",
                    {"Content-Disposition": f'attachment; filename="{item["filename"]}"'})
@@ -788,21 +791,29 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def build_id() -> str:
-    """Which copy of the code this is, as the short commit it was built from.
+    """Identify the actual code, including fixes installed before a commit.
 
-    Payroll is updated by pulling this folder, and until now there was no way
-    to tell from the app whether the copy answering you was the one you just
-    pulled. Read straight out of .git rather than by running git, so it costs
-    nothing and works when git is not installed.
+    Comparing only HEAD kept the old server alive when files were replaced
+    without moving the commit. Include a content fingerprint so relaunching
+    also picks up an uncommitted fix or an installation with no .git folder.
     """
-    root = Path(__file__).resolve().parent.parent
+    root = APP_ROOT
+    revision = ""
     try:
         head = (root / ".git" / "HEAD").read_text(encoding="utf-8").strip()
         if head.startswith("ref: "):
             head = (root / ".git" / head[5:]).read_text(encoding="utf-8").strip()
-        return head[:7]
+        revision = head[:7] + "-"
     except OSError:
-        return ""
+        pass
+    fingerprint = hashlib.sha256()
+    for folder, pattern in (("payroll", "*.py"), ("web", "*")):
+        for path in sorted((root / folder).glob(pattern)):
+            if path.is_file():
+                fingerprint.update(path.relative_to(root).as_posix().encode("utf-8"))
+                fingerprint.update(b"\0")
+                fingerprint.update(path.read_bytes())
+    return revision + fingerprint.hexdigest()[:12]
 
 
 BUILD = build_id()

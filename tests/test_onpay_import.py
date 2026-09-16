@@ -16,6 +16,7 @@ import unittest
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -133,6 +134,24 @@ class OnPayImportFile(unittest.TestCase):
         self.assertEqual(Decimal(rows[wanted]["cash_amount"]),
                          self.person("Priya Raman").dt_premium)
 
+    def test_non_hourly_premiums_use_treat_as_cash(self):
+        # OnPay rejected the Sep 7–13 file with: "Must use treat-as-cash
+        # for pay type 17". Both premium items are Non-Hourly in OnPay.
+        ids = {str(self.mapping["pay_ids"][key]) for key in
+               ("overtime_premium", "double_overtime_premium")}
+        rows = [r for r in self.rows if r["id"] in ids]
+        self.assertEqual({r["id"] for r in rows}, ids)
+        for row in rows:
+            self.assertEqual(row["treat_as_cash"], "1", row)
+            self.assertEqual(row["hours"], "")
+            self.assertEqual(row["rate"], "")
+            self.assertGreater(Decimal(row["cash_amount"]), 0)
+
+    def test_hourly_rows_do_not_use_treat_as_cash(self):
+        for row in self.rows:
+            if row["hours"]:
+                self.assertEqual(row["treat_as_cash"], "", row)
+
     def test_the_four_hour_minimum_rides_in_the_regular_row(self):
         # Belle Cruz worked 2.5 hours and is paid 4.
         rows = {r["id"]: r for r in self.rows_for("Belle Cruz")}
@@ -218,11 +237,16 @@ class OnPayImportFile(unittest.TestCase):
         self.assertNotIn("24.9975", self.csv_text)
 
     def test_ob3_carries_all_overtime_hours(self):
-        for row in self.rows:
-            if row["id"] == "2":
-                self.assertEqual(row["ob3_qualified_ot"], row["hours"])
-            if row["id"] == "22":
-                self.assertEqual(row["ob3_qualified_ot"], row["hours"])
+        # Check the rows that actually carry the premiums; items 2 and 22
+        # are deliberately absent, so checking them would test nothing.
+        for name in ("Dana Reyes", "Priya Raman", "Tess Okafor"):
+            person = self.person(name)
+            rows = {r["id"]: r for r in self.rows_for(name)}
+            for key, hours in (("overtime_premium", person.ot_hours),
+                               ("double_overtime_premium", person.dt_hours)):
+                if hours:
+                    row = rows[str(self.mapping["pay_ids"][key])]
+                    self.assertEqual(Decimal(row["ob3_qualified_ot"]), hours)
 
     def test_an_empty_roster_number_falls_back_to_the_sitterwise_one(self):
         """Sitterwise's caregiver number is the Clock User, so a blank on the
@@ -264,6 +288,54 @@ class OnPayImportFile(unittest.TestCase):
         _, skipped = exports.onpay_import_csv(payroll, roster)
         self.assertIn(victim.name, skipped)
 
+    def test_export_summary_counts_only_the_rows_in_the_upload(self):
+        item = exports.all_exports(self.payroll, self.roster)[0]
+        self.assertFalse(item["download_blocked"])
+        self.assertEqual(item["summary"]["people"], len({r["emp_num"] for r in self.rows}))
+        self.assertEqual(item["summary"]["rows"], len(self.rows))
+        self.assertEqual(Decimal(item["summary"]["hours"]),
+                         sum((Decimal(r["hours"] or 0) for r in self.rows), Decimal(0)))
+
+    def test_already_paid_run_cannot_download_an_empty_upload(self):
+        duplicate = build_run(FIXTURE, Rules.load(), WEEK_START, WEEK_END,
+                              roster=self.roster,
+                              previously_paid={j.booking_id: "Original payroll" for c in self.payroll.caregivers
+                                               for j in c.jobs})
+        item = exports.all_exports(duplicate, self.roster)[0]
+        self.assertEqual(item["summary"]["rows"], 0)
+        self.assertTrue(item["download_blocked"])
+        self.assertIn("History", item["problems"][0]["problem"])
+
+    def test_shared_clock_users_block_the_upload(self):
+        roster = dict(self.roster)
+        a, b = self.person("Dana Reyes"), self.person("Tess Okafor")
+        roster[b.key] = dataclasses.replace(roster[b.key],
+                                            onpay_clock_user=roster[a.key].onpay_clock_user)
+        item = exports.all_exports(self.payroll, roster)[0]
+        self.assertTrue(item["download_blocked"])
+        self.assertTrue(any("shares Clock User" in p["problem"] for p in item["problems"]))
+
+    def test_invalid_mapping_blocks_download_but_keeps_reports_available(self):
+        mapping = {**self.mapping, "pay_ids": {
+            **self.mapping["pay_ids"], "overtime_premium": 2}}
+        with patch.object(exports, "load_onpay_mapping", return_value=mapping):
+            listing = exports.all_exports(self.payroll, self.roster)
+        self.assertTrue(listing[0]["download_blocked"])
+        self.assertTrue(all(not item.get("download_blocked") for item in listing[1:]))
+
+    def test_download_endpoint_enforces_the_block(self):
+        from payroll.server import ApiError, Handler
+        handler = object.__new__(Handler)
+        handler.store = Mock()
+        with patch("payroll.server.load_run", return_value=(None, self.payroll, self.roster)), \
+             patch.object(exports, "all_exports", return_value=[{
+                 "key": "onpay_import", "download_blocked": True,
+                 "problems": [{"problem": "This file has no pay rows.", "blocking": True}],
+             }]):
+            with self.assertRaisesRegex(ApiError, "no pay rows"):
+                handler._export("test", "onpay_import")
+        handler.store.log.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
@@ -283,6 +355,25 @@ class ThePayItemMapping(unittest.TestCase):
 
     def test_the_live_mapping_is_sound(self):
         self.assertEqual(exports.onpay_mapping_problems(self.mapping), [])
+
+    def test_shipped_double_time_item_leaves_prior_pay_adjustment_alone(self):
+        shipped = exports.load_onpay_mapping(exports.MAPPING_PATH)
+        self.assertEqual(shipped["pay_ids"]["double_overtime_premium"], 121)
+        self.assertEqual(shipped["pay_item_names"]["121"], "Double Time Premium")
+
+    def test_premiums_cannot_use_onpays_recalculated_overtime_items(self):
+        for key in ("overtime_premium", "double_overtime_premium"):
+            for pay_id in (2, 22):
+                broken = {**self.mapping,
+                          "pay_ids": {**self.mapping["pay_ids"], key: pay_id}}
+                self.assertTrue(exports.onpay_mapping_problems(broken), (key, pay_id))
+
+    def test_premiums_cannot_share_an_item_with_other_pay(self):
+        for other in ("regular", "bonus", "tips", "reimbursement", "overtime_premium"):
+            broken = {**self.mapping, "pay_ids": {
+                **self.mapping["pay_ids"],
+                "double_overtime_premium": self.mapping["pay_ids"][other]}}
+            self.assertTrue(exports.onpay_mapping_problems(broken), other)
 
     def test_the_standard_rate_is_onpay_pay_item_1(self):
         self.assertEqual(self.tiers["standard"], 1)

@@ -218,33 +218,37 @@ attention · Caregiver detail · OnPay lines and notes · OnPay import file.
 
 OnPay switched CSV upload on for this account on 4 September 2026 and sent the
 specification. The file is **one row per pay item**, not one per person, with
-eight fixed columns and numeric pay types. Pay types used: 1 Regular,
-2 Overtime, 22 Double Overtime, 7 Bonus, 107 Reimbursement, 208 Controlled
-Tips. All of that lives in `onpay_mapping.json`.
+eight fixed columns and numeric pay types. Pay types used: 1 Regular, 119 3-4 Children, 17 Overtime Premium,
+121 Double Time Premium, 7 Bonus, 107 Reimbursement, 208 Controlled Tips. All of that lives in `onpay_mapping.json`.
 
-**One OnPay rule shapes the whole file:** an employee may appear only once on
-pay item 1 and once on pay item 2. So a caregiver who worked two rates in a
-week cannot have both on pay item 1, and the file is written two ways:
-
-*One rate* — the ordinary presentation.
+**Every paid hour stays at its original rate.** The standard tier uses item 1
+and the higher tier uses item 119. Overtime and double-time premiums are
+separate cash amounts, for both single-rate and mixed-rate caregivers:
 
 ```
-Regular    12.00h @ $23.00
-Overtime    2.00h @ $34.50
+Regular              5.00h @ $23.00
+3-4 Children         5.00h @ $28.00
+Overtime Premium                   $25.50
 ```
 
-*Two rates* — each rate keeps its own row at the rate actually worked, and the
-overtime row carries only the premium, because the straight time is already
-above it.
+The premium is already calculated by this app. Items 2 and 22 are never used:
+OnPay recalculates those items, which can change the amount paid.
 
-```
-3-4 Children   5.00h @ $28.00     (a Custom pay type in OnPay)
-Regular        5.00h @ $23.00
-Overtime       2.00h @ $12.75     (half the $25.50 weighted regular rate)
-```
+**Required OnPay setup:** Overtime Premium is custom item **17** and Double
+Time Premium is custom item **121**. Both must be **Non-Hourly**. Their CSV
+rows have `treat_as_cash=1`, a `cash_amount`, and blank `hours` and `rate`.
+Hourly rate rows keep `treat_as_cash` blank. Item 4 is Prior Pay Adjustment;
+do not rename it or use it for double time.
 
-Both come to the same money. The second just doesn't put a blended rate on the
-wage statement in place of the rates the caregiver actually worked.
+The Exports screen shows the people, paid hours and total actually in the
+upload, plus the required premium-item setup. Compare these totals with
+OnPay after importing. An empty file, conflicting pay-item mapping, shared
+Clock User or inconsistent total blocks the download. If a duplicate run
+has everybody marked already paid, reopen the original run from History.
+
+The last CSV column retains the configured overtime hours. Whether OnPay
+uses that column on custom items for OBBB reporting is still unconfirmed;
+matching the pay total alone does not verify that reporting.
 
 Salary is pay item 1 with a cash amount and no hours, the way OnPay's own
 template writes it. The four-hour minimum rides in the regular row — guarantee
@@ -261,7 +265,7 @@ Each pay line gets the note that belongs beside it:
 
 ```
 Regular        8.00h @ $23.00   Aug 3 Wall, Aug 5 Congdon
-Overtime       1.00h @ $34.50   Aug 5
+Overtime Premium      $11.50   1.00 hrs x $11.50 premium (Aug 5)
 Reimbursement          $76.00   Aug 6 mileage 100 mi paid
 ```
 
@@ -294,9 +298,8 @@ and it cannot run payroll — every note is pasted by the person running it.
 
 That screen also shows each line's hours and rate exactly as the import file
 writes them, so entering somebody by hand comes to the same money. Regular
-reads 8 hours rather than 9 for a caregiver with an hour of overtime, because
-OnPay wants the overtime hours on their own line rather than counted twice —
-the screen says so rather than leaving you to work it out.
+includes all nine hours for a caregiver with one hour of overtime; the extra
+half-rate premium is a separate cash amount, so the hours are counted once.
 
 **Two things never reach the file.** Anyone the payroll check has stopped, and
 anyone with no Clock User. Both are named on screen for entering by hand. The

@@ -400,14 +400,10 @@ def onpay_pay_rows(caregiver: CaregiverPayroll, emp_num: str,
     and one for pay item 2 per employee. That single rule decides the shape
     of everything below.
 
-    Somebody on one rate gets the ordinary presentation: regular hours at
-    their rate, overtime at time and a half. Somebody who worked two rates
-    in the week cannot have both on pay item 1, so each rate keeps its own
-    row at its real rate and the overtime row carries only the premium -
-    half the weighted regular rate - because the straight-time part is
-    already in the rate rows above. Both come to the same money; the second
-    just does not put a blended rate on the wage statement in place of the
-    rates actually worked.
+    Every paid hour stays on its rate tier. Overtime and double-time
+    premiums are cash-only rows on separate Non-Hourly custom items.
+    OnPay's own overtime items recalculate pay, and premium hours in the
+    hourly columns would count the same worked hours twice.
     """
     ids = mapping.get("pay_ids", {})
     tier_ids = mapping.get("tier_pay_ids", {})
@@ -457,9 +453,7 @@ def onpay_pay_rows(caregiver: CaregiverPayroll, emp_num: str,
     # and paid its own number: we sent Olivia Doyle 4 hours at $34.50 and
     # OnPay paid $48.56 an hour. Eleven people, $466.99 overpaid.
     #
-    # A custom pay item is paid exactly as sent - hours times rate, no
-    # recalculation - so the premium goes there, with hours and a rate on the
-    # wage statement rather than a lump sum.
+    # Separate Non-Hourly custom items carry the calculated premium amounts.
     for key, bucket in sorted(buckets.items(), key=lambda kv: -kv[1]["rate"]):
         hourly(tier_ids.get(key, ids.get("regular", 1)),
                bucket["hours"], bucket["rate"],
@@ -468,12 +462,14 @@ def onpay_pay_rows(caregiver: CaregiverPayroll, emp_num: str,
     # item land in OnPay's Regular hours column, which would count the same
     # hour twice and put a total on the wage statement that nobody worked -
     # 37.50 for Angela Hanson, who worked 26.75.
+    # OnPay requires treat_as_cash=1 for these Non-Hourly items. A cash
+    # amount alone is not sufficient; that exact omission rejected the file.
     cash(ids.get("overtime_premium", 17), caregiver.ot_premium,
-         treat_as_cash=False, ob3=ot,
+         ob3=ot,
          note=_premium_note(ot, regular_rate * Decimal("0.5"),
                             _overtime_note(caregiver, "ot_hours")))
-    cash(ids.get("double_overtime_premium", 4), caregiver.dt_premium,
-         treat_as_cash=False, ob3=dt,
+    cash(ids.get("double_overtime_premium", 121), caregiver.dt_premium,
+         ob3=dt,
          note=_premium_note(dt, regular_rate,
                             _overtime_note(caregiver, "dt_hours")))
 
@@ -580,6 +576,23 @@ def onpay_mapping_problems(mapping: dict) -> list[str]:
             problems.append(
                 f"The {name} rate is set to pay item {pay_id}, which is already "
                 "used for overtime, bonuses, tips or reimbursements.")
+    ids = mapping.get("pay_ids", {})
+    for key in ("overtime_premium", "double_overtime_premium"):
+        pay_id = ids.get(key)
+        if not isinstance(pay_id, int) or isinstance(pay_id, bool) or pay_id <= 0:
+            problems.append(f"Set a valid numeric OnPay pay item for {key}.")
+            continue
+        if pay_id in (2, 22):
+            problems.append(
+                f"{key} cannot use pay item {pay_id}: OnPay recalculates its own "
+                "overtime items. Use a separate Non-Hourly custom item.")
+        conflicts = [name for name, value in ids.items()
+                     if name != key and not name.startswith("_") and value == pay_id]
+        conflicts += [f"{name} rate" for name, value in tiers.items() if value == pay_id]
+        if conflicts:
+            problems.append(
+                f"{key} uses pay item {pay_id}, already used by "
+                f"{', '.join(conflicts)}. Premiums need their own Non-Hourly items.")
     return problems
 
 
@@ -595,8 +608,9 @@ def onpay_import_check(run: PayrollRun, roster: dict[str, RosterEntry],
     """
     mapping = mapping or load_onpay_mapping()
     statuses = run.summary["statuses"]
-    problems = [{"caregiver": "", "problem": text}
+    problems = [{"caregiver": "", "problem": text, "blocking": True}
                 for text in onpay_mapping_problems(mapping)]
+    employees: dict[str, str] = {}
     for caregiver in run.caregivers:
         entry = roster.get(caregiver.key)
         emp = clock_user_for(caregiver, entry)
@@ -614,6 +628,14 @@ def onpay_import_check(run: PayrollRun, roster: dict[str, RosterEntry],
                            "know who they are - enter them by hand",
             })
             continue
+        if emp in employees:
+            problems.append({
+                "caregiver": caregiver.name,
+                "problem": f"shares Clock User {emp} with {employees[emp]}; "
+                           "check the roster before importing",
+                "blocking": True,
+            })
+        employees[emp] = caregiver.name
         rows = onpay_pay_rows(caregiver, emp, mapping)
         seen: dict[str, int] = {}
         for row in rows:
@@ -624,6 +646,7 @@ def onpay_import_check(run: PayrollRun, roster: dict[str, RosterEntry],
                     "caregiver": caregiver.name,
                     "problem": f"would be in the file twice on pay item {pay_id}, "
                                "which OnPay does not allow",
+                    "blocking": True,
                 })
         total = sum((onpay_row_total(r) for r in rows), ZERO)
         if _q(total, _Q2) != _q(caregiver.total_paid, _Q2):
@@ -631,6 +654,7 @@ def onpay_import_check(run: PayrollRun, roster: dict[str, RosterEntry],
                 "caregiver": caregiver.name,
                 "problem": f"the file comes to ${_q(total, _Q2)} but this payroll "
                            f"says ${_q(caregiver.total_paid, _Q2)}",
+                "blocking": True,
             })
     return problems
 
@@ -743,7 +767,32 @@ def _onpay_values(run: PayrollRun, caregiver: CaregiverPayroll,
 def all_exports(run: PayrollRun, roster: dict[str, RosterEntry],
                 entered: dict[str, bool] | None = None) -> list[dict]:
     stamp = _safe(run.label)
-    onpay_csv, skipped = onpay_import_csv(run, roster)
+    mapping = load_onpay_mapping()
+    onpay_csv, skipped = onpay_import_csv(run, roster, mapping)
+    problems = onpay_import_check(run, roster, mapping)
+    rows = list(csv.DictReader(io.StringIO(onpay_csv),
+                               **({} if mapping.get("include_header", True)
+                                  else {"fieldnames": ONPAY_HEADER})))
+    if not rows:
+        problems.insert(0, {
+            "caregiver": "", "blocking": True,
+            "problem": "This file has no pay rows. Check the payroll warnings. "
+                       "If these bookings were already finalized, open that "
+                       "payroll from History instead of building a duplicate.",
+        })
+    summary = {
+        "people": len({row["emp_num"] for row in rows}),
+        "rows": len(rows),
+        "hours": str(sum((Decimal(row["hours"] or 0) for row in rows), ZERO)),
+        "total": str(sum((Decimal(row["cash_amount"]) if row["cash_amount"]
+                          else _q(Decimal(row["hours"] or 0)
+                                  * Decimal(row["rate"] or 0), _Q2)
+                          for row in rows), ZERO)),
+    }
+    premium_items = [{"id": mapping["pay_ids"][key],
+                      "name": onpay_pay_item_name(mapping["pay_ids"][key], mapping)}
+                     for key in ("overtime_premium", "double_overtime_premium")
+                     if mapping.get("pay_ids", {}).get(key) is not None]
     # The one to upload comes first. It is what the whole screen is for,
     # and it used to sit at the bottom under six files nobody needed that
     # day - so the top one got picked and OnPay refused it.
@@ -755,13 +804,13 @@ def all_exports(run: PayrollRun, roster: dict[str, RosterEntry],
                             if skipped else " Everybody who can be paid is in it.")),
          "filename": f"UPLOAD-THIS-TO-ONPAY-{stamp}.csv", "content": onpay_csv,
          "skipped": skipped,
-         "problems": onpay_import_check(run, roster)},
+         "problems": problems, "summary": summary, "premium_items": premium_items,
+         "download_blocked": any(p.get("blocking") for p in problems)},
         {"key": "onpay_entry", "name": "OnPay worksheet - to type from",
          "description": ("For typing from, not for uploading - OnPay will not take "
                          "this one. One row per caregiver, holding the figures you "
-                         "type in. Regular is smaller than the hours worked wherever "
-                         "there is overtime, because OnPay wants those hours on their "
-                         "own."),
+                         "type in. Paid hours stay on their rate tiers; overtime "
+                         "premiums are separate cash amounts."),
          "filename": f"TYPE-FROM-THIS-do-not-upload-{stamp}.csv",
          "content": onpay_entry_csv(run, roster, entered)},
         {"key": "onpay_lines", "name": "OnPay lines and notes",

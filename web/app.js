@@ -957,13 +957,24 @@ VIEWS.after_exports = async () => {
           <p class="muted" style="margin:4px 0 0">${esc(e.description)}</p>
           <div class="faint mono" style="margin-top:6px">${esc(e.filename)}</div>
         </div>
-        <a class="btn btn-primary" href="/api/runs/${S.runId}/export/${e.key}">Download</a>
+        ${e.download_blocked
+          ? '<button class="btn" disabled>Resolve issues to download</button>'
+          : `<a class="btn btn-primary" href="/api/runs/${S.runId}/export/${e.key}">Download</a>`}
       </div>
+      ${e.summary ? `<div class="banner notes" style="margin-top:12px">
+        <div><strong>In this upload: ${e.summary.people} people &middot;
+          ${hrs(e.summary.hours)} paid hours &middot; ${money(e.summary.total)}</strong>
+          <div>${e.summary.rows} pay rows. Compare these figures with OnPay after importing.</div>
+          <div style="margin-top:8px">In OnPay, ${e.premium_items.map(p =>
+            `${esc(p.name)} (item ${esc(p.id)})`).join(' and ')} must be
+            <strong>Non-Hourly</strong>. This file sends the premiums as cash,
+            with no extra paid hours.</div>
+        </div>
+      </div>` : ''}
       ${(e.problems && e.problems.length) ? `<div class="banner warn" style="margin-top:12px">
-        <strong>${plural(e.problems.length, 'person is', 'people are')} not in this file.</strong>
-        Enter ${e.problems.length === 1 ? 'them' : 'them'} in OnPay by hand.
+        <strong>${e.download_blocked ? 'Fix these issues before uploading.' : 'Review who is left out before uploading.'}</strong>
         <ul class="notelist">
-          ${e.problems.map(pr => `<li><strong>${esc(pr.caregiver || 'A job with no caregiver name')}</strong>
+          ${e.problems.map(pr => `<li><strong>${esc(pr.caregiver || 'OnPay file')}</strong>
             &mdash; ${esc(pr.problem)}</li>`).join('')}
         </ul>
         <div style="margin-top:8px">Clock Users are set on the
@@ -971,7 +982,7 @@ VIEWS.after_exports = async () => {
           <a href="#/check">payroll check</a>.</div>
       </div>` : (e.skipped && e.skipped.length) ? `<div class="banner warn" style="margin-top:12px">
         Not in this file: ${esc(e.skipped.map(n => n || 'a job with no caregiver name').join(', '))}.
-        Enter them in OnPay by hand.</div>` : ''}
+        Review the payroll check before entering any missing pay by hand.</div>` : ''}
     </div>`).join('');
 };
 
