@@ -149,10 +149,10 @@ def _check_unconfirmed_roster(caregivers: list[CaregiverPayroll],
     owed = sum((c.total_paid for c in unconfirmed), ZERO)
     names = sorted(c.name for c in unconfirmed if c.name)
     return [Finding(
-        "roster_unconfirmed", REVIEW,
-        f"{len(unconfirmed)} caregivers have not had their OnPay setup confirmed",
-        f"The app added them to the roster itself when it saw them in the export, so it does "
-        f"not yet know whether they can actually be paid. Between them they are owed ${owed}. "
+        "roster_unconfirmed", NOTE,
+        f"{len(unconfirmed)} caregivers have not been matched to an employee list here",
+        f"This does not mean they are missing from OnPay. Their records came from bookings. "
+        f"Compare the people and amounts after importing into OnPay. They are owed ${owed}. "
         + (", ".join(names[:6]) + (" and others." if len(names) > 6 else ".")),
         "Once you have checked they are in OnPay, the Roster screen confirms everyone in "
         "this payroll at once. Anyone genuinely not in OnPay can be marked so, which will "
@@ -411,8 +411,8 @@ def _check_caregiver(caregiver: CaregiverPayroll, roster: dict[str, RosterEntry]
                    f"blended rate of ${week.regular_rate:.4f} an hour, not on either "
                    "rate on its own, and") if caregiver.uses_multiple_rates else " has overtime, and"
         out.append(Finding(
-            "overtime_premium_by_hand", REVIEW,
-            f"{name}'s overtime does not go in OnPay's Overtime column",
+            "overtime_premium_by_hand", NOTE,
+            f"{name}'s overtime premium is included in the download",
             f"{name}{blended} OnPay recalculates anything put on its Overtime or Double "
             "Overtime pay items, whatever rate it is given. On the week of 7 September "
             "2026 it did that to eleven people and overpaid them $466.99 between them. "

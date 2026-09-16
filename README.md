@@ -3,7 +3,7 @@
 Turns a Sitterwise bookings export into everything you need to enter payroll
 into OnPay, with the arithmetic shown for every figure.
 
-Runs on your own computer. No accounts, no cloud, nothing leaves the machine.
+Runs on your own computer. Payroll data stays local unless you choose to upload it to OnPay or share the notes task with ChatGPT Work.
 
 Sitterwise payroll runs **weekly, Monday through Sunday**. Pay stubs go out by
 email through OnPay on Tuesday, and direct deposit lands on Friday.
@@ -11,6 +11,10 @@ email through OnPay on Tuesday, and direct deposit lands on Friday.
 ---
 
 ## Running it
+
+For a downloadable Mac app with its own Python runtime and a private history
+transfer, see [Standalone Mac distribution](docs/MAC-DISTRIBUTION.md).
+The source-folder launcher described below remains available for development.
 
 Double-click **`Start Sitterwise Payroll.command`**. It opens in your browser.
 Leave the black window open while you work; close it when you're done.
@@ -48,52 +52,27 @@ place.
 
 ## How a payroll goes
 
-**1. Upload** the export from Sitterwise. Your export is a whole month, so the
-app asks which pay week you mean. Sitterwise pays **weekly, Monday to Sunday**,
-so it lists those weeks with the number of jobs in each and pre-selects the
-most recent complete one. Half-months are offered underneath in case you ever
-need to run one.
+1. **Upload bookings** and choose the Monday–Sunday pay week.
+2. **Download OnPay CSV**, import it once in OnPay, and compare the people,
+   hours, and total shown in the app.
+3. **Copy notes for ChatGPT Work** and paste the task into a local Work chat
+   with your signed-in browser selected. It contains every paycheck memo,
+   employee identifiers, and amounts to verify. The task authorizes notes only.
+4. Review and submit payroll yourself in OnPay, then **Mark this week finished**
+   in the app to protect against paying the same bookings again.
 
-**When a pay week crosses a month end,** pick or drop *both* months' exports.
-Sitterwise exports a month at a time and payroll runs Monday to Sunday, so the
-week of Monday 31 August 2026 needs one day from August and six from
-September. The app joins them and says what it did — how many bookings came
-from each file, which were in both and counted once, and any booking whose two
-copies disagree, where the newer export is used.
+The main navigation is New payroll, This payroll, History, and More. Settings,
+roster connections, detailed checks, manual entry, and reports are under More.
+Only actionable checks appear in the everyday workflow; an unknown local
+roster status no longer means someone is absent from OnPay. An employee list
+without Clock Users can confirm presence without falsely reporting incomplete setup.
 
-A booking recorded twice inside *one* export is left alone, because that is a
-problem the payroll check reports and hiding it would quietly drop somebody's
-pay.
+A download that would omit anyone is blocked until their issue is resolved.
+Scheduled pay needs a verified OnPay Clock User too. If an employee has both
+booking wages and recurring pay on Regular, the duplicate pay-item check
+stops the import so a verified separate mapping can be configured first.
 
-**2. Payroll check.** Three numbers, in plain English:
-
-```
-41 caregivers are ready
- 9 need a look from you
- 0 can't be paid yet
-```
-
-Click any of them, or any warning, to go straight to the problem.
-
-**3. Caregiver cards.** Collapsed by default. Open one and every figure can be
-expanded down to the bookings it came from — including which days caused
-overtime and how the blended rate was worked out.
-
-**4. Enter in OnPay.** Two ways:
-
-- the whole grid, one row per caregiver, in the categories OnPay wants
-- **one caregiver at a time**, with huge numbers, copy buttons, and a
-  "mark entered" button that moves you to the next person
-
-Put OnPay in one window and this in the other.
-
-**5. Check it adds up.** Every job in the period is either paid or explained,
-and the app's figures are compared against Sitterwise's own.
-
-**6. Finish.** The payroll locks. Those jobs can never be paid again in a
-later run unless you deliberately unlock it.
-
----
+[Weekly guide and setup](docs/WEEKLY-PAYROLL.md)
 
 ## What it works out for you
 

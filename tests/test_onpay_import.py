@@ -290,7 +290,9 @@ class OnPayImportFile(unittest.TestCase):
 
     def test_export_summary_counts_only_the_rows_in_the_upload(self):
         item = exports.all_exports(self.payroll, self.roster)[0]
-        self.assertFalse(item["download_blocked"])
+        # This fixture contains a caregiver with an unresolved rate. A partial
+        # file must not look like a complete, ready-to-import payroll.
+        self.assertTrue(item["download_blocked"])
         self.assertEqual(item["summary"]["people"], len({r["emp_num"] for r in self.rows}))
         self.assertEqual(item["summary"]["rows"], len(self.rows))
         self.assertEqual(Decimal(item["summary"]["hours"]),

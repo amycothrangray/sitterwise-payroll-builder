@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import errno
 import hashlib
+from functools import wraps
 import json
 import mimetypes
 import re
@@ -24,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import calsavers, combine, exports, extras, settings_files
+from . import calsavers, combine, exports, extras, settings_files, transfer
 from .engine import Adjustment
 from .importer import import_export
 from .roster import (NOT_IN_ONPAY, READY, RosterEntry, STATUS_LABELS,
@@ -42,6 +43,15 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 
 _import_cache: dict[str, object] = {}
 _cache_lock = threading.Lock()
+_api_lock = threading.RLock()
+
+
+def serialized(fn):
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        with _api_lock:
+            return fn(*args, **kwargs)
+    return wrapped
 
 
 class ApiError(Exception):
@@ -81,6 +91,8 @@ def load_run(store: Store, run_id: str):
     if not record:
         raise ApiError("That payroll run no longer exists.", 404)
     source = Path(record["source_path"])
+    if not source.is_absolute():
+        source = store.path.parent / source
     if not source.exists():
         raise ApiError(
             f"The export this payroll was built from is missing ({record['source_filename']}). "
@@ -120,6 +132,8 @@ def waiting_notes(store: Store, record: dict) -> list[dict]:
     means the next one anybody runs.
     """
     start, end = record["period_start"], record["period_end"]
+    if record["status"] == "finalized":
+        return []
     out = []
     for note in store.list_notes("open"):
         applies = note.get("applies_to") or "next"
@@ -239,6 +253,7 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(f"The app could not read that request: {exc}")
 
     # -- routing --------------------------------------------------------
+    @serialized
     def do_GET(self):
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
@@ -251,6 +266,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:                       # never crash the app
             return self._error(f"Something went wrong: {exc}", 500)
 
+    @serialized
     def do_POST(self):
         parsed = urlparse(self.path)
         if unquote(parsed.path) == "/api/stop":
@@ -270,6 +286,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             return self._error(f"Something went wrong: {exc}", 500)
 
+    @serialized
     def do_DELETE(self):
         parsed = urlparse(self.path)
         try:
@@ -292,6 +309,14 @@ class Handler(BaseHTTPRequestHandler):
     # -- GET api --------------------------------------------------------
     def _api_get(self, path, query):
         store = self.store
+        if path == "/api/history-transfer":
+            try:
+                raw = transfer.create_archive(store, settings_files.DATA_DIR)
+            except ValueError as exc:
+                raise ApiError(str(exc))
+            filename = f"Sitterwise-payroll-history-{date.today().isoformat()}.sitterwise"
+            return self._send(200, raw, "application/octet-stream", {
+                "Content-Disposition": f'attachment; filename="{filename}"'})
         if path == "/api/state":
             roster = store.roster()
             return self._json({
@@ -300,6 +325,7 @@ class Handler(BaseHTTPRequestHandler):
                 "roster_needing_attention": sum(1 for e in roster.values() if e.needs_attention),
                 "rules_version": Rules.load().version,
                 "build": BUILD,
+                "data_path": str(store.path.resolve()),
             })
         if path == "/api/roster":
             return self._json({
@@ -377,7 +403,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _export(self, run_id, key):
         store = self.store
-        _, run, roster = load_run(store, run_id)
+        record, run, roster = load_run(store, run_id)
         listing = exports.all_exports(run, roster, store.entered_map(run_id))
         item = next((e for e in listing if e["key"] == key), None)
         if not item:
@@ -385,13 +411,28 @@ class Handler(BaseHTTPRequestHandler):
         if item.get("download_blocked"):
             raise ApiError("The OnPay file cannot be downloaded yet: " + " ".join(
                 p["problem"] for p in item["problems"] if p.get("blocking")))
+        if key == "onpay_import" and waiting_notes(store, record):
+            raise ApiError("Saved pay changes need attention before downloading. "
+                           "Open Payroll checks to apply or resolve them.")
         store.log("export_downloaded", item["name"], run_id)
-        self._send(200, item["content"].encode("utf-8-sig"), "text/csv; charset=utf-8",
+        self._send(200, item["content"].encode("utf-8-sig"),
+                   item.get("content_type", "text/csv; charset=utf-8"),
                    {"Content-Disposition": f'attachment; filename="{item["filename"]}"'})
 
     # -- POST api -------------------------------------------------------
     def _api_post(self, path):
         store = self.store
+
+        if path == "/api/history-transfer":
+            if int(self.headers.get("Content-Length") or 0) > transfer.MAX_BYTES:
+                raise ApiError("This history file is too large.")
+            try:
+                result = transfer.restore_archive(self._body(), store)
+            except ValueError as exc:
+                raise ApiError(str(exc))
+            with _cache_lock:
+                _import_cache.clear()
+            return self._json({"ok": True, "counts": result["counts"]})
 
         if path == "/api/upload":
             return self._upload()
@@ -739,6 +780,16 @@ class Handler(BaseHTTPRequestHandler):
 
         rules = Rules.load()
         result = _cached_import(source, rules)
+        # A double click or re-upload must not create a second payroll for a
+        # finished week. Keep the finalized run and its paid-booking ledger.
+        for previous in sorted(store.list_runs(), key=lambda r: r["status"] != "finalized"):
+            if (previous["period_start"] == start.isoformat()
+                    and previous["period_end"] == end.isoformat()
+                    and (previous["status"] == "finalized"
+                         or previous["source_sha256"] == result.source_sha256)):
+                return self._json({"ok": True, "run_id": previous["id"],
+                                   "existing": True,
+                                   "finalized": previous["status"] == "finalized"})
         payable = [j for j in result.jobs
                    if j.is_payable and j.workday and start <= j.workday <= end]
         if not payable:
@@ -805,6 +856,9 @@ def build_id() -> str:
     also picks up an uncommitted fix or an installation with no .git folder.
     """
     root = APP_ROOT
+    release = root / "build.json"
+    if release.exists():
+        return json.loads(release.read_text())["build"]
     revision = ""
     try:
         head = (root / ".git" / "HEAD").read_text(encoding="utf-8").strip()
@@ -875,8 +929,24 @@ def _payroll_already_on(port: int) -> bool:
         return False
 
 
+def _same_data_on(port: int, path: Path) -> bool:
+    """A test or a newly installed app must never replace another data store."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/state", timeout=2) as resp:
+            state = json.loads(resp.read().decode("utf-8"))
+        saved_path = state.get("data_path")
+        if saved_path:
+            return Path(saved_path).resolve() == path.resolve()
+        # Older versions have no data identity. Leave them running, and use
+        # another port rather than guessing which records they own.
+        return False
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
 def serve(port: int = 8756, open_browser: bool = True, data_path: Path | None = None):
     httpd = None
+    chosen_data = Path(data_path) if data_path else DATA_DIR / "payroll.sqlite3"
     for candidate in range(port, port + 10):
         try:
             Handler.store = Store(data_path)
@@ -886,6 +956,8 @@ def serve(port: int = 8756, open_browser: bool = True, data_path: Path | None = 
         except OSError as exc:
             if exc.errno != errno.EADDRINUSE:
                 raise
+            if not _same_data_on(candidate, chosen_data):
+                continue
             running = _running_build(candidate)
             if running is None:
                 continue          # something else has the port; try the next one

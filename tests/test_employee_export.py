@@ -25,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from payroll.roster import (DIRECT_DEPOSIT_INCOMPLETE, READY,               # noqa: E402
-                            SETUP_INCOMPLETE, RosterEntry, assign_clock_users,
+                            SETUP_INCOMPLETE, MATCHED, RosterEntry, assign_clock_users,
                             compare_clock_users, merge_import, normalise_name,
                             parse_onpay_employee_export)
 
@@ -290,7 +290,7 @@ class FoldingTheExportIntoTheRosterHere(unittest.TestCase):
             self.roster(RosterEntry("tess okafor", "Tess Okafor", status=READY,
                                     onpay_clock_user="1042")),
             [RosterEntry("tess okafor", "Tess Okafor",
-                         status=SETUP_INCOMPLETE, onpay_rate="23")])
+                         status=MATCHED, onpay_rate="23")])
         self.assertEqual(changed[0].onpay_clock_user, "1042")
         self.assertEqual(changed[0].status, READY)
 

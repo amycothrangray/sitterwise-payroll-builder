@@ -13,18 +13,24 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 
 READY = "onpay_ready"
+MATCHED = "onpay_matched"
+UNCHECKED = "onpay_not_checked"
 DIRECT_DEPOSIT_INCOMPLETE = "direct_deposit_incomplete"
 SETUP_INCOMPLETE = "onpay_setup_incomplete"
 NOT_IN_ONPAY = "not_in_onpay"
 
 STATUS_LABELS = {
     READY: "OnPay Ready",
+    MATCHED: "Found in OnPay employee list",
+    UNCHECKED: "OnPay status not checked",
     DIRECT_DEPOSIT_INCOMPLETE: "Direct Deposit Incomplete",
     SETUP_INCOMPLETE: "OnPay Setup Incomplete",
     NOT_IN_ONPAY: "Not in OnPay",
 }
 STATUS_ICONS = {
     READY: "check",
+    MATCHED: "check",
+    UNCHECKED: "info",
     DIRECT_DEPOSIT_INCOMPLETE: "warn",
     SETUP_INCOMPLETE: "warn",
     NOT_IN_ONPAY: "stop",
@@ -69,7 +75,7 @@ class RosterEntry:
 
     @property
     def needs_attention(self) -> bool:
-        return self.status != READY
+        return self.status in {DIRECT_DEPOSIT_INCOMPLETE, SETUP_INCOMPLETE, NOT_IN_ONPAY}
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -288,6 +294,7 @@ def parse_onpay_employee_export(path: Path | str) -> tuple[list[RosterEntry], li
                 raw = _text(row.get(status_col)).lower()
                 if raw in ("inactive", "terminated", "false", "no", "0"):
                     status = SETUP_INCOMPLETE
+                    has_left = True
             if dd_col and status == READY:
                 raw = _text(row.get(dd_col)).lower()
                 if raw in ("", "none", "no", "false", "0", "check", "paper check", "manual"):
@@ -331,13 +338,12 @@ def parse_onpay_employee_export(path: Path | str) -> tuple[list[RosterEntry], li
 
     if not identified:
         problems.append(
-            "Nobody in this file has a Clock User or an Employee Number. That is the "
-            "number the OnPay import file identifies people by, so this export can "
-            "fill in names and rates but cannot make anybody ready to pay. In OnPay, "
-            "the report that carries it is the one to export instead.")
+            "This employee list confirms who is in OnPay, but contains no Clock Users. "
+            "Existing Clock Users are kept. The payroll download separately checks "
+            "whether each person has an import identifier.")
         for entry in entries:
             if entry.status == READY:
-                entry.status = SETUP_INCOMPLETE
+                entry.status = MATCHED
     if not saw_direct_deposit:
         problems.append(
             "This file has no direct deposit column, so direct deposit is not "
@@ -422,8 +428,7 @@ def merge_import(existing: dict[str, RosterEntry],
                       "onpay_pay_type", "onpay_pay_frequency"):
             if not getattr(entry, field):
                 setattr(entry, field, getattr(previous, field))
-        if entry.status != READY and (previous.onpay_clock_user
-                                      or previous.onpay_employee_id):
+        if entry.status == MATCHED and previous.status == READY:
             entry.status = previous.status
 
         # A note somebody wrote is theirs. One the app wrote for itself is

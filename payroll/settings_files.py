@@ -16,9 +16,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-
-ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = ROOT / "data"
+from .paths import APP_ROOT as ROOT, DATA_DIR
 
 DEFAULT_RULES = ROOT / "rules.json"
 DEFAULT_MAPPING = ROOT / "onpay_mapping.json"

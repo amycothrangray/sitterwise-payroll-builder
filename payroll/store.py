@@ -16,9 +16,9 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from .engine import Adjustment
-from .roster import RosterEntry, READY, SETUP_INCOMPLETE
+from .roster import RosterEntry, READY, SETUP_INCOMPLETE, UNCHECKED
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+from .paths import DATA_DIR
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -142,6 +142,13 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
         self._add_missing_columns()
+        self.normalise_roster_statuses()
+        self.db.commit()
+
+    def normalise_roster_statuses(self) -> None:
+        """An automatically seeded record is unknown, not an OnPay defect."""
+        self.db.execute("UPDATE roster SET status=? WHERE status=? AND source=?",
+                        (UNCHECKED, SETUP_INCOMPLETE, "added_automatically"))
         self.db.commit()
 
     def _add_missing_columns(self) -> None:
@@ -348,11 +355,8 @@ class Store:
     def ensure_roster_entries(self, people: list[tuple[str, str]]) -> int:
         """Add anyone being paid who is not on the roster yet.
 
-        They come in as "OnPay Setup Incomplete", which means "nobody has told
-        the app yet" rather than "definitely not set up". That shows up for
-        review without blocking payroll, because the app genuinely does not
-        know. Marking somebody "Not in OnPay" is a deliberate act by Amy, and
-        that does block.
+        Unknown setup is separate from an actual OnPay setup problem.
+        The download checks identifiers. An explicit "Not in OnPay" blocks.
         """
         added = 0
         known = set(self.roster())
@@ -360,8 +364,8 @@ class Store:
             if key and key not in known:
                 self.upsert_roster_entry(
                     RosterEntry(caregiver_key=key, display_name=name,
-                                status=SETUP_INCOMPLETE, source="added_automatically",
-                                note="Added automatically - confirm their OnPay setup"),
+                                status=UNCHECKED, source="added_automatically",
+                                note="Added from bookings; OnPay status not checked"),
                     quiet=True)
                 known.add(key)
                 added += 1

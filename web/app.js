@@ -78,22 +78,9 @@ function measureTopbar() {
 window.addEventListener('resize', measureTopbar);
 
 function navBar() {
-  const run = S.run && S.run.run;
-  const summary = S.run && S.run.summary;
-  const items = [['home', 'Home']];
-  if (run) {
-    const stops = summary ? summary.blocked : 0;
-    items.push(
-      ['check', 'Payroll check' + (stops ? `<span class="pip">${stops}</span>` : '')],
-      ['cards', 'Caregivers'],
-      ['onpay', 'Enter in OnPay'],
-      ['reconcile', 'Check it adds up'],
-      ['exports', 'Exports'],
-    );
-  }
-  const open = (S.notes && S.notes.notes.filter(n => n.status === 'open').length) || 0;
-  items.push(['notes', 'Notes' + (open ? `<span class="pip quiet">${open}</span>` : '')],
-             ['roster', 'Roster'], ['history', 'History'], ['settings', 'Settings']);
+  const items = [['home', 'New payroll']];
+  if (S.run) items.push(['payroll', 'This payroll']);
+  items.push(['history', 'History'], ['more', 'More']);
   $('#nav').innerHTML = items.map(([key, label]) =>
     `<button onclick="go('${key}')" aria-current="${S.view === key}">${label}</button>`).join('');
 }
@@ -102,7 +89,7 @@ const VIEWS = {};
 
 async function render() {
   navBar();
-  const needsRun = ['check', 'cards', 'onpay', 'entry', 'reconcile', 'exports'];
+  const needsRun = ['payroll', 'check', 'cards', 'onpay', 'entry', 'reconcile', 'exports'];
   if (needsRun.includes(S.view) && (!S.run || S.run.run.id !== S.runId)) await loadRun();
   if (needsRun.includes(S.view) && !S.run) { S.view = 'home'; }
   if (S.view === 'home') await loadHome();
@@ -111,10 +98,76 @@ async function render() {
   if (S.view === 'settings') S.recurring = await api('/api/recurring');
   if (S.view === 'settings') S.settings = await api('/api/settings');
   if (S.view === 'history') S.home = await api('/api/state');
+  if (S.view === 'payroll') S.downloads = (await api(`/api/runs/${S.runId}/exports`)).exports;
   navBar();
   $('#app').innerHTML = (VIEWS[S.view] || VIEWS.home)();
   measureTopbar();
   if (VIEWS['after_' + S.view]) VIEWS['after_' + S.view]();
+}
+
+VIEWS.more = () => `
+  <div class="pagehead"><h1>More</h1><p class="sub">Settings and details, when you need them.</p></div>
+  <div class="tools-grid">
+    <button class="card tool" onclick="go('settings')"><h2>Settings & backup</h2><p>Weekly payments, payroll rules, and moving to another Mac.</p></button>
+    <button class="card tool" onclick="go('roster')"><h2>OnPay connections</h2><p>Employee names and import identifiers.</p></button>
+    <button class="card tool" onclick="go('notes')"><h2>Pay changes</h2><p>Extra payments and corrections for a future payroll.</p></button>
+    ${S.run ? [['check','Payroll checks'],['cards','Caregiver details'],['reconcile','Reconciliation'],['exports','All reports'],['onpay','Manual entry']].map(([key,label]) =>
+      `<button class="card tool" onclick="go('${key}')"><h2>${label}</h2></button>`).join('') : ''}
+  </div>`;
+
+VIEWS.payroll = () => {
+  const r = S.run, item = S.downloads.find(e => e.key === 'onpay_import');
+  const issues = r.findings.filter(f => f.level === 'stop' || f.level === 'review');
+  const waiting = r.waiting_notes || [];
+  const blocked = item.download_blocked || waiting.length > 0;
+  const recurring = r.caregivers.flatMap(c => (c.adjustments || [])
+    .filter(a => a.kind === 'recurring_pay').map(a => `${c.name}: ${money(a.new_value)}`));
+  return `<div class="payroll-flow">
+    <div class="pagehead"><h1>${esc(r.run.label)}</h1><p class="sub">${r.run.locked ? 'Saved payroll record' : 'Your payroll in three steps'}</p></div>
+    ${r.run.locked ? '<div class="banner notes">This week is marked finished in the app. Do not import it again if it has already been paid in OnPay.</div>' : ''}
+    <section class="card flow-step"><span class="step-number">1</span><div class="step-body">
+      <h2>Bookings uploaded</h2><p>${r.totals.caregivers} people · ${plural(r.totals.jobs, 'booking', 'bookings')} · <strong>${money(r.totals.total_paid)}</strong> before taxes</p>
+      ${recurring.length ? `<p class="muted">Weekly and scheduled pay included: ${esc(recurring.join(' · '))}.</p>` : ''}
+      <a href="#/home">Start a different week</a>
+    </div></section>
+    ${waiting.length ? `<div class="banner warn"><div><strong>${plural(waiting.length,'saved pay change needs','saved pay changes need')} attention</strong><p>Resolve these before downloading so they are not missed.</p><button class="btn" onclick="go('check')">Review pay changes</button></div></div>` : ''}
+    ${issues.length ? `<details class="card review-box" ${r.summary.blocked ? 'open' : ''}><summary>${r.summary.blocked ? 'Fix before downloading' : 'Review before paying'} · ${issues.length} ${issues.length === 1 ? 'check' : 'checks'}</summary>
+      ${issues.map(f => `<div class="flow-finding"><strong>${esc(f.title)}</strong><p>${esc(f.detail)}</p><p class="muted">${esc(f.what_to_do)}</p></div>`).join('')}
+      <button class="btn" onclick="go('check')">Open payroll checks</button></details>` : ''}
+    <section class="card flow-step"><span class="step-number">2</span><div class="step-body">
+      <h2>Download payroll for OnPay</h2>
+      ${blocked ? `<p>There is something to fix before this file is complete.</p><ul>${(item.problems || []).filter(p => p.blocking).map(p => `<li><strong>${esc(p.caregiver)}</strong> ${esc(p.problem)}</li>`).join('')}</ul><button class="btn" onclick="go('roster')">OnPay connections</button>` : `<p>Import this file once into the matching week in OnPay.</p><a class="btn btn-primary btn-huge" href="/api/runs/${S.runId}/export/onpay_import" onclick="return confirmHistoricalDownload()">Download OnPay CSV</a><p class="file-totals">After importing, check: <strong>${item.summary.people} people · ${hrs(item.summary.hours)} hours · ${money(item.summary.total)}</strong></p>`}
+    </div></section>
+    <section class="card flow-step"><span class="step-number">3</span><div class="step-body">
+      <h2>Give ChatGPT Work the notes</h2><p>After the OnPay import, copy this task into ChatGPT Work. It includes every paycheck note and the totals to verify.</p>
+      <button class="btn btn-primary btn-huge" onclick="copyNotesTask(this)" ${blocked ? 'disabled' : ''}>Copy notes for ChatGPT Work</button>
+      <p class="muted" style="margin-top:12px">Use Work locally and select your signed-in OnPay browser with @Chrome. ChatGPT saves and checks the notes; you review and submit payroll in OnPay.</p>
+      <details><summary>Need a file instead?</summary><p><a href="/api/runs/${S.runId}/export/onpay_notes">Download the notes task</a></p></details>
+      <div id="notes-copy-fallback"></div>
+    </div></section>
+    ${!r.run.locked ? `<div class="finish-row"><p>After you have submitted this payroll in OnPay:</p><button class="btn" onclick="finishSimplePayroll()" ${blocked || !r.summary.can_finalize ? 'disabled' : ''}>Mark this week finished</button></div>` : ''}
+  </div>`;
+};
+
+function confirmHistoricalDownload() {
+  return !S.run.run.locked || confirm('This payroll is marked finished. Download a copy for your records? Do not import it again if OnPay has already paid it.');
+}
+async function copyNotesTask(button) {
+  try {
+    const res = await fetch(`/api/runs/${S.runId}/export/onpay_notes`);
+    if (!res.ok) throw new Error('Could not load the notes. Please try again.');
+    const text = (await res.text()).replace(/^\uFEFF/, '');
+    try { await navigator.clipboard.writeText(text); toast('Copied. Paste into ChatGPT Work.'); }
+    catch (_) {
+      $('#notes-copy-fallback').innerHTML = '<p>Select and copy the task below:</p><textarea aria-label="Notes task to copy" rows="8"></textarea>';
+      const field = $('#notes-copy-fallback textarea'); field.value = text; field.focus(); field.select();
+    }
+  } catch(e) { toast(e.message, true); }
+}
+async function finishSimplePayroll() {
+  if (!confirm('Have you submitted this week in OnPay? This marks its bookings paid in this app so they cannot be paid twice.')) return;
+  try { await post(`/api/runs/${S.runId}/finalize`, {}); await refreshRun(); }
+  catch(e) { toast(e.message, true); }
 }
 
 /* =====================================================================
@@ -122,16 +175,17 @@ async function render() {
    ===================================================================== */
 VIEWS.home = () => {
   const runs = (S.home && S.home.runs) || [];
-  const open = runs.filter(r => r.status === 'open');
+  const lastFinished = runs.filter(r => r.status === 'finalized').map(r => r.period_end).sort().pop();
+  const open = runs.filter(r => r.status === 'open' && (!lastFinished || r.period_start > lastFinished)).slice(0, 1);
   return `
   <div class="pagehead">
     <h1>Run payroll</h1>
-    <p class="sub">Upload the export from Sitterwise. The app does the rest.</p>
+    <p class="sub">Upload bookings. Download payroll. Copy the notes.</p>
   </div>
 
   <div class="dropzone" id="drop">
     <button class="btn btn-primary btn-huge" onclick="$('#file').click()">
-      Upload Sitterwise Payroll Export
+      1. Upload bookings
     </button>
     <div class="hint">or drop the file here — .xlsx or .csv</div>
     <div class="hint">A pay week that crosses a month end needs both months —
@@ -146,11 +200,7 @@ VIEWS.home = () => {
     ${open.map(runRow).join('')}
   </div>` : ''}
 
-  ${S.home && S.home.roster_needing_attention ? `
-  <div class="banner warn" style="margin-top:20px">
-    ${plural(S.home.roster_needing_attention, 'caregiver is', 'caregivers are')} not fully set up in
-    OnPay. <a href="#/roster">Have a look at the roster</a>.
-  </div>` : ''}`;
+`;
 };
 
 const runRow = (r) => `
@@ -164,7 +214,7 @@ const runRow = (r) => `
     </span>
   </button>`;
 
-async function openRun(id) { S.runId = id; S.run = null; go('check', id); }
+async function openRun(id) { S.runId = id; S.run = null; go('payroll', id); }
 
 VIEWS.after_home = () => {
   const drop = $('#drop'), input = $('#file');
@@ -209,8 +259,8 @@ function uploadCard(info) {
   return `
   <div class="card" style="margin-top:20px">
     <h2>${esc(info.source_filename)}</h2>
-    <p class="sub">${info.jobs} bookings, ${info.payable_jobs} of them payable,
-       ${info.caregivers} caregivers, ${esc(info.min_date)} to ${esc(info.max_date)}.</p>
+    <p class="sub">${plural(info.jobs, 'booking', 'bookings')}, ${info.payable_jobs} payable,
+       ${plural(info.caregivers, 'caregiver', 'caregivers')}, ${esc(info.min_date)} to ${esc(info.max_date)}.</p>
 
     ${joined ? `<div class="banner notes">
       <div>
@@ -238,22 +288,22 @@ function uploadCard(info) {
     ${info.parse_errors.length ? `<div class="banner bad">
        ${plural(info.parse_errors.length, 'row', 'rows')} could not be read:
        ${esc(info.parse_errors.slice(0, 3).map(e => `row ${e.row} — ${e.problem}`).join('; '))}</div>` : ''}
-    ${info.unmapped_columns.length ? `<div class="banner warn">
+    ${info.unmapped_columns.length ? `<details><summary>Extra columns ignored</summary><div class="muted">
        Columns the app did not recognise and has ignored:
-       ${esc(info.unmapped_columns.join(', '))}.</div>` : ''}
+       ${esc(info.unmapped_columns.join(', '))}.</div></details>` : ''}
 
     <h3 style="margin-top:18px">Which payroll is this?</h3>
     ${periodButtons(choices.filter(c => c.kind !== 'half_month'),
                     'Pay weeks — Monday to Sunday')}
-    ${periodButtons(choices.filter(c => c.kind === 'half_month'),
-                    'Or a half-month, if you need one')}
+    <details style="margin-top:16px"><summary>Different dates</summary>
+    ${periodButtons(choices.filter(c => c.kind === 'half_month'), 'Half-month periods')}
     <div class="row" style="margin-top:14px;align-items:flex-end">
       <label class="field" style="margin:0"><span>From</span>
         <input type="date" id="ps" value="${esc(info.suggested.start)}"></label>
       <label class="field" style="margin:0"><span>To</span>
         <input type="date" id="pe" value="${esc(info.suggested.end)}"></label>
       <button class="btn btn-primary" onclick="createRun()">Start this payroll</button>
-    </div>
+    </div></details>
   </div>`;
 }
 
@@ -265,7 +315,7 @@ function periodButtons(choices, heading) {
       <div class="row">
         ${choices.map(c => `
           <button class="btn" onclick="pickPeriod('${c.start}','${c.end}')">
-            ${esc(c.label)} <span class="faint">· ${c.jobs} jobs</span>
+            ${esc(c.label)} <span class="faint">· ${plural(c.jobs, 'job', 'jobs')}</span>
           </button>`).join('')}
       </div>
     </div>`;
@@ -281,7 +331,8 @@ async function createRun() {
       period_start: $('#ps').value, period_end: $('#pe').value,
     });
     S.runId = res.run_id; S.run = null;
-    go('check', res.run_id);
+    if (res.finalized) toast('This week is already finished. Opening its saved record.');
+    go('payroll', res.run_id);
   } catch (e) { toast(e.message, true); }
 }
 
@@ -773,9 +824,8 @@ VIEWS.entry = () => {
         file has no room for it, so it is typed onto the line.</p>
       ${num(c.ot_hours) > 0 || num(c.dt_hours) > 0 ? `
       <p class="muted" style="margin:0 0 12px;font-size:13px">
-        Regular reads ${hrs(num(c.hours_worked) - num(c.ot_hours) - num(c.dt_hours)
-          + num(c.guarantee_hours))} here rather than ${hrs(c.hours_worked)}, because OnPay
-        wants the overtime hours on their own line rather than counted twice.</p>` : ''}
+        Keep every paid hour on its original rate row. The overtime and double-time
+        premiums are separate dollar amounts, with no additional paid hours.</p>` : ''}
       ${c.onpay_lines.map(l => `
         <div class="payline">
           <div class="payline-what">
@@ -1366,6 +1416,19 @@ VIEWS.settings = () => {
   ${recurringSection()}
 
   <div class="card">
+    <h2>Backup and transfer payroll</h2>
+    <p>A private history file keeps your payrolls, source exports, roster, notes,
+      recurring pay, and settings together. Keep a copy before moving to another Mac.</p>
+    <p class="muted">This file contains employee and client information. Share it privately
+      with your payroll operator. Restore works only in an empty app.</p>
+    <div class="row">
+      <a class="btn" href="/api/history-transfer">Download private history file</a>
+      <button class="btn" onclick="$('#historyfile').click()">Restore history on this Mac</button>
+      <input type="file" id="historyfile" accept=".sitterwise" hidden onchange="restoreHistory(this)">
+    </div>
+  </div>
+
+  <div class="card">
     <h2>Overtime</h2>
     <div class="banner locked">California 8/40 with double time — decided 22 August 2026.
       Time and a half over 8 hours in a day, double time over 12, and seventh-consecutive-day
@@ -1446,6 +1509,22 @@ async function saveSettings() {
 async function saveRawSettings() {
   try { await pushSettings({ rules: JSON.parse($('#rawrules').value) }); }
   catch (e) { toast('That is not valid JSON: ' + e.message, true); }
+}
+
+async function restoreHistory(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!confirm('Restore the payroll history from this file? This works only in an empty app.')) {
+    input.value = ''; return;
+  }
+  try {
+    const result = await api('/api/history-transfer', {
+      method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file,
+    });
+    S.runId = null; S.run = null;
+    toast(`Restored ${result.counts.runs} payrolls. Your history and settings are ready.`);
+    go('history');
+  } catch (e) { toast(e.message, true); input.value = ''; }
 }
 
 async function saveMapping() {

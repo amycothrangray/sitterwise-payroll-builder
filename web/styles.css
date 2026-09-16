@@ -290,3 +290,16 @@ nav button .pip.quiet{background:var(--teal-pale);color:var(--navy)}
   background:var(--teal-pale); border:1px solid var(--teal-line);
   border-radius:7px; padding:7px 10px; min-width:0; overflow-wrap:anywhere;
 }
+
+/* The everyday workflow. Secondary tools live under More. */
+.payroll-flow{max-width:850px;margin:auto}
+.flow-step{display:flex;gap:20px;padding:28px;margin-bottom:20px}
+.step-number{display:grid;place-items:center;flex:0 0 42px;height:42px;border-radius:50%;background:var(--teal-pale);color:var(--navy);font-size:21px;font-weight:700}
+.step-body{min-width:0;flex:1}.step-body h2{margin-bottom:8px}
+.file-totals{margin:16px 0 0;font-size:14px}
+.flow-finding{border-top:1px solid var(--line);padding:14px 0}.flow-finding p{margin:5px 0;font-size:14px}
+.review-box summary, .step-body summary{cursor:pointer;font-weight:600}
+.review-box[open] summary{margin-bottom:16px}.finish-row{margin:28px 0;text-align:center}
+.tools-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.tool{text-align:left;cursor:pointer;width:100%;margin:0}.tool p{margin:8px 0 0;color:var(--muted)}
+@media(max-width:550px){.flow-step{gap:12px;padding:18px}.step-number{flex-basis:32px;height:32px;font-size:18px}.btn-huge{font-size:15px}}

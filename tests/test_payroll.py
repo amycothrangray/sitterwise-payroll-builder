@@ -701,7 +701,7 @@ class TestExports(PayrollCase):
     def test_every_export_is_produced_and_has_content(self):
         for item in exports.all_exports(self.payroll, self.roster):
             self.assertTrue(item["content"].strip(), item["key"])
-            self.assertTrue(item["filename"].endswith(".csv"))
+            self.assertTrue(item["filename"].endswith((".csv", ".txt")))
 
     def test_the_onpay_grid_has_a_row_for_every_caregiver(self):
         csv_text = exports.onpay_entry_csv(self.payroll, self.roster)
