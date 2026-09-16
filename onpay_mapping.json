@@ -45,5 +45,5 @@
     "17": "Overtime Premium",
     "4": "Double Time Premium"
   },
-  "_ob3_open_question": "OPEN, for Cindy at OnPay: the premium now sits on a custom pay item, so OnPay's OBBB Qualified OT column is not being filled in by OnPay's own overtime engine. The file still sends the hours in the ob3 column. Nobody has confirmed whether OnPay reads it from a custom item."
+  "_ob3_open_question": "OPEN, to ask OnPay support: the premium now sits on a custom pay item, so OnPay's OBBB Qualified OT column is not being filled in by OnPay's own overtime engine. The file still sends the hours in the ob3 column. Nobody has confirmed whether OnPay reads it from a custom item."
 }
