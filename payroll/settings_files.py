@@ -51,3 +51,44 @@ def rules_path() -> Path:
 
 def mapping_path() -> Path:
     return _mine_or_default(USER_MAPPING, DEFAULT_MAPPING)
+
+
+def merged_with_defaults(mine: Path, default: Path) -> dict:
+    """Your settings, with anything new from the app filled in around them.
+
+    Your copy wins for every setting you have. A key you have never had -
+    because the app only started shipping it in a later version - is taken
+    from the default, so an update can add a setting without you having to
+    delete your file to see it.
+
+    Only missing keys are filled in. A value you set is never replaced and a
+    list is never merged into, so removing a pay rate tier or a status stays
+    removed.
+    """
+    import json
+
+    def read(path: Path) -> dict:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                loaded = json.load(fh)
+            return loaded if isinstance(loaded, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def fill(theirs: dict, defaults: dict) -> dict:
+        out = dict(theirs)
+        for key, value in defaults.items():
+            if key not in out:
+                out[key] = value
+            elif isinstance(value, dict) and isinstance(out[key], dict):
+                out[key] = fill(out[key], value)
+        return out
+
+    path = _mine_or_default(mine, default)
+    if path == default:
+        return read(default)
+    return fill(read(path), read(default))
+
+
+def mapping() -> dict:
+    return merged_with_defaults(USER_MAPPING, DEFAULT_MAPPING)

@@ -99,23 +99,39 @@ class OnPayImportFile(unittest.TestCase):
                 if "left out" not in p["problem"] and "Clock User" not in p["problem"]]
         self.assertEqual(real, [])
 
-    # -- one rate: the ordinary presentation --------------------------------
+    # -- overtime never goes near OnPay's own overtime items ----------------
 
-    def test_one_rate_pays_overtime_at_time_and_a_half(self):
+    def test_pay_items_2_and_22_are_never_used(self):
+        """OnPay recomputes anything on them, whatever rate we send.
+
+        The register for 7-13 September 2026 came back with every one of
+        these rows relabelled "Overtime Weighted" at a rate OnPay invented -
+        Olivia Doyle was sent 4 hours at $34.50 and paid $48.56 an hour.
+        Eleven people, $466.99 overpaid.
+        """
+        used = sorted({r["id"] for r in self.rows if r["id"] in ("2", "22")})
+        self.assertEqual(used, [], "OnPay will recalculate these rows")
+
+    def test_one_rate_keeps_every_hour_at_the_rate_worked(self):
         # Dana Reyes: 14 hours at $23, two of them overtime.
         rows = {r["id"]: r for r in self.rows_for("Dana Reyes")}
-        self.assertEqual(Decimal(rows["1"]["hours"]), 12)
+        self.assertEqual(Decimal(rows["1"]["hours"]), 14)
         self.assertEqual(Decimal(rows["1"]["rate"]), Decimal("23"))
-        self.assertEqual(Decimal(rows["2"]["hours"]), 2)
-        self.assertEqual(Decimal(rows["2"]["rate"]), Decimal("34.5"))
-        total = sum((money(Decimal(r["hours"]) * Decimal(r["rate"]))
-                     for r in rows.values() if r["hours"]), Decimal("0"))
-        self.assertEqual(total, self.person("Dana Reyes").total_paid)
 
-    def test_double_time_gets_its_own_pay_type(self):
+    def test_one_rate_overtime_premium_is_money_on_its_own_item(self):
+        premium = str(self.mapping["pay_ids"]["overtime_premium"])
+        rows = {r["id"]: r for r in self.rows_for("Dana Reyes")}
+        # Two hours of overtime at $23 - the premium alone is $11.50 an hour.
+        self.assertEqual(Decimal(rows[premium]["cash_amount"]), Decimal("23.00"))
+        self.assertEqual(rows[premium]["hours"], "")
+        self.assertEqual(rows[premium]["rate"], "")
+
+    def test_double_time_premium_gets_its_own_pay_type(self):
+        wanted = str(self.mapping["pay_ids"]["double_overtime_premium"])
         rows = {r["id"]: r for r in self.rows_for("Priya Raman")}
-        self.assertIn("22", rows)
-        self.assertEqual(Decimal(rows["22"]["rate"]), Decimal("46"))
+        self.assertIn(wanted, rows)
+        self.assertEqual(Decimal(rows[wanted]["cash_amount"]),
+                         self.person("Priya Raman").dt_premium)
 
     def test_the_four_hour_minimum_rides_in_the_regular_row(self):
         # Belle Cruz worked 2.5 hours and is paid 4.
@@ -137,16 +153,35 @@ class OnPayImportFile(unittest.TestCase):
         self.assertIn(str(self.mapping["tier_pay_ids"]["three_to_four"]), ids)
 
     def test_two_rate_overtime_carries_only_the_premium(self):
+        premium = str(self.mapping["pay_ids"]["overtime_premium"])
         rows = {r["id"]: r for r in self.rows_for("Tess Okafor")}
         # Weighted regular rate is $25.50, so the premium alone is $12.75.
-        self.assertEqual(Decimal(rows["2"]["rate"]), Decimal("12.75"))
+        self.assertEqual(Decimal(rows[premium]["cash_amount"]),
+                         self.person("Tess Okafor").ot_premium)
+        self.assertEqual(rows[premium]["hours"], "", "hours would count twice")
 
     def test_a_two_rate_week_still_comes_to_the_right_money(self):
-        total = sum(
-            (money(Decimal(r["hours"]) * Decimal(r["rate"]))
-             for r in self.rows_for("Tess Okafor") if r["hours"]),
-            Decimal("0"))
+        rows = self.rows_for("Tess Okafor")
+        total = sum((money(Decimal(r["hours"]) * Decimal(r["rate"])) if r["hours"]
+                     else Decimal(r["cash_amount"])
+                     for r in rows), Decimal("0"))
         self.assertEqual(total, self.person("Tess Okafor").total_paid)
+
+    def test_the_hours_in_the_file_are_the_hours_being_paid_for(self):
+        """A premium carried as hours would count the same hour twice.
+
+        Angela Hanson worked 26.75 hours in the week of 7 September 2026 and
+        OnPay's wage statement said 37.50, because the premium rows put her
+        overtime hours in a second time.
+        """
+        for caregiver in self.payroll.caregivers:
+            if caregiver.name in self.skipped or not caregiver.jobs:
+                continue
+            filed = sum((Decimal(r["hours"]) for r in self.rows_for(caregiver.name)
+                         if r["hours"]), Decimal("0"))
+            self.assertEqual(
+                filed, caregiver.hours_worked + caregiver.guarantee_hours,
+                caregiver.name)
 
     # -- the flat-money rows ------------------------------------------------
 
@@ -315,8 +350,15 @@ class NotesForThePayLines(unittest.TestCase):
         self.assertTrue(note)
         self.assertRegex(note, r"[A-Z][a-z]{2} \d")
 
+    def test_the_premium_row_says_what_it_is_made_of(self):
+        """The row is just money, so the hours and rate live in the note."""
+        premium = str(self.mapping["pay_ids"]["overtime_premium"])
+        note = next(l["note"] for l in self.lines("Dana Reyes") if l["id"] == premium)
+        self.assertRegex(note, r"2\.00 hrs x \$11\.5")
+
     def test_the_overtime_line_says_which_day_it_fell_on(self):
-        note = next(l["note"] for l in self.lines("Dana Reyes") if l["id"] == "2")
+        note = next(l["note"] for l in self.lines("Dana Reyes")
+                    if l["id"] == str(self.mapping["pay_ids"]["overtime_premium"]))
         self.assertRegex(note, r"[A-Z][a-z]{2} \d")
 
     def test_a_mileage_note_says_the_miles_being_paid_for(self):

@@ -2,7 +2,7 @@
   "_comment": "How the OnPay import file is built. OnPay switched CSV upload on for this account on 4 Sep 2026 and sent the specification these values come from. The file is one row per PAY ITEM, not one row per person, and the pay types are numbers.",
   "_the_columns": "type, id, emp_num, hours, rate, treat_as_cash, cash_amount, ob3_qualified_ot. type is always 1. emp_num is the Clock User from the employee's OnPay profile (Job tab > Employment > Clock User). OnPay confirmed this on 8 September 2026: Employee Number is optional and Clock User is required. There is no bulk import for Clock Users - each is typed into that person's profile by hand, so the app picks the numbers and holds them (Roster > Clock Users).",
   "_the_one_rule_that_shapes_everything": "OnPay allows only ONE row for pay item 1 and ONE for pay item 2 per employee. A caregiver who worked two different rates in a week therefore cannot have both on pay item 1, which is why a second hourly pay type is used for the higher tier.",
-  "_how_overtime_is_written": "Single rate: overtime is a normal row at time and a half, and the regular row holds the remaining hours. Two rates: each rate keeps its own row at its real rate, and the overtime row carries only the premium (half the weighted regular rate), because the straight-time part is already in the rate rows. Both come to the same money - the second just does not hide a rate the caregiver actually worked.",
+  "_how_overtime_is_written": "Every hour goes in at the rate it was actually worked, and the overtime premium rides on its own pay item - Overtime Premium (17) at half the weighted regular rate, Double Time Premium (4) at the full weighted rate. It CANNOT go on OnPay's Overtime (2) or Double Overtime (22): OnPay recomputes those itself whatever rate the file carries. Proven on the register for 7-13 September 2026, where every such row came back relabelled \"Overtime Weighted\" at a rate OnPay invented - Olivia Doyle was sent 4 hours at $34.50 and paid $48.56 an hour. A custom pay item is paid exactly as sent, so the premium lands where we put it and the wage statement still shows hours and a rate rather than a lump sum.",
   "filename": "onpay-import",
   "include_header": true,
   "pay_ids": {
@@ -11,7 +11,10 @@
     "double_overtime": 22,
     "bonus": 7,
     "reimbursement": 107,
-    "tips": 208
+    "tips": 208,
+    "overtime_premium": 17,
+    "double_overtime_premium": 4,
+    "_premium_note": "Pay items 2 and 22 are deliberately unused. Amy renamed Custom 2 (17) to 'Overtime Premium' and Custom 1 (4) to 'Double Time Premium' in OnPay on 16 September 2026."
   },
   "tier_pay_ids": {
     "_comment": "Which OnPay pay item carries each Sitterwise rate tier. These are OnPay's internal pay-item IDs, which are NOT the numbers in the 'Custom N' names - 'Custom 1' is id 4, 'Custom 4' is id 119. Check the id, not the name. 'standard' must be 1, and no two tiers may share an id or OnPay will reject the file.",
@@ -39,7 +42,8 @@
     "107": "Reimbursement",
     "208": "Controlled Tips",
     "119": "3-4 Children",
-    "17": "Custom 2"
+    "17": "Overtime Premium",
+    "4": "Double Time Premium"
   },
-  "_manual_entry_note": "A caregiver who worked two rates in a week has an overtime premium that OnPay's on-screen grid cannot take - its Overtime column always pays 1.5x that row's rate, which would overpay them. The import file has no such problem: it carries an explicit rate on pay item 2. When somebody is typing instead, the premium goes on Custom 2 (id 17) as hours at half the weighted regular rate, so the wage statement still shows hours and a rate rather than a lump sum."
+  "_ob3_open_question": "OPEN, for Cindy at OnPay: the premium now sits on a custom pay item, so OnPay's OBBB Qualified OT column is not being filled in by OnPay's own overtime engine. The file still sends the hours in the ob3 column. Nobody has confirmed whether OnPay reads it from a custom item."
 }

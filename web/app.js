@@ -746,7 +746,7 @@ VIEWS.entry = () => {
   rows.push(bigNum('MILEAGE', num(c.mileage_amount).toFixed(2), num(c.mileage_amount) > 0));
   rows.push(bigNum('REIMBURSEMENT', num(c.other_reimbursement).toFixed(2), num(c.other_reimbursement) > 0));
 
-  const mixedWarning = c.uses_multiple_rates && (num(c.ot_hours) > 0 || num(c.dt_hours) > 0);
+  const mixedWarning = num(c.ot_hours) > 0 || num(c.dt_hours) > 0;
   return `
   <div class="entry">
     <div class="pagehead entryhead">
@@ -756,8 +756,9 @@ VIEWS.entry = () => {
     </div>
     ${c.status === 'blocked' ? `<div class="banner bad">This caregiver can't be paid yet — see the payroll check.</div>` : ''}
     ${mixedWarning ? `<div class="banner warn">
-      ${esc(c.name)} worked at two different rates this period, so OnPay won't calculate their
-      overtime correctly on its own. Enter the overtime premium as a dollar amount.</div>` : ''}
+      ${esc(c.name)} has overtime. Put the premium on <strong>Overtime Premium</strong> as a
+      dollar amount and leave OnPay's Overtime hours column empty — OnPay recalculates
+      anything in that column and will overpay.</div>` : ''}
     ${c.adjustments.length ? `<div class="banner warn">
       ${plural(c.adjustments.length, 'figure was', 'figures were')} corrected by hand for this caregiver.</div>` : ''}
 

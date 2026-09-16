@@ -280,8 +280,18 @@ def caregiver_detail_csv(run: PayrollRun, roster: dict[str, RosterEntry]) -> str
 # --- 6. the OnPay import file -----------------------------------------------
 
 def load_onpay_mapping(path: Path | str | None = None) -> dict:
-    with open(Path(path) if path else mapping_path(), encoding="utf-8") as fh:
-        return json.load(fh)
+    """Amy's mapping, with anything the app has newly started shipping.
+
+    Straight off disk when a path is given - that is a caller naming a file.
+    Otherwise hers, filled in from the defaults for keys she has never had,
+    so an update that adds a pay item reaches her without her editing
+    anything. Overtime Premium and Double Time Premium arrived this way.
+    """
+    if path is not None:
+        with open(Path(path), encoding="utf-8") as fh:
+            return json.load(fh)
+    from .settings_files import mapping as _mapping
+    return _mapping()
 
 
 ONPAY_HEADER = ["type", "id", "emp_num", "hours", "rate", "treat_as_cash",
@@ -318,6 +328,14 @@ def _jobs_note(jobs) -> str:
             seen.add(label)
             out.append(label)
     return ", ".join(out)
+
+
+def _premium_note(hours, rate, days: str) -> str:
+    """Say what the premium is made of, since the row itself is just money."""
+    if not hours:
+        return ""
+    bits = f"{_q(hours, _Q2)} hrs x ${_q(rate, Decimal('0.0001'))} premium"
+    return f"{bits} ({days})" if days else bits
 
 
 def _overtime_note(caregiver, attr: str) -> str:
@@ -402,10 +420,10 @@ def onpay_pay_rows(caregiver: CaregiverPayroll, emp_num: str,
                          "rate": _q(rate, places), "cash": None, "ob3": ob3,
                          "note": note})
 
-    def cash(pay_id, amount, treat_as_cash=True, note=""):
+    def cash(pay_id, amount, treat_as_cash=True, note="", ob3=None):
         if amount:
             rows.append({"id": str(pay_id), "hours": None, "rate": None,
-                         "cash": _q(amount, _Q2), "ob3": None,
+                         "cash": _q(amount, _Q2), "ob3": ob3,
                          "treat_as_cash": treat_as_cash, "note": note})
 
     # Hours, kept per rate tier, with the four-hour minimum folded into the
@@ -430,25 +448,34 @@ def onpay_pay_rows(caregiver: CaregiverPayroll, emp_num: str,
         if job.hours_worked + job.guarantee_hours > 0:
             by_tier.setdefault(job.tier_key, []).append(job)
 
-    if len(buckets) == 1:
-        key, bucket = next(iter(buckets.items()))
+    # Every hour goes in at the rate it was actually worked, and the
+    # overtime premium rides on its own pay item.
+    #
+    # It cannot go on OnPay's Overtime (2) or Double Overtime (22), whatever
+    # rate we send. OnPay recomputes those itself - the register for the week
+    # of 7 September 2026 relabelled every one of them "Overtime Weighted"
+    # and paid its own number: we sent Olivia Doyle 4 hours at $34.50 and
+    # OnPay paid $48.56 an hour. Eleven people, $466.99 overpaid.
+    #
+    # A custom pay item is paid exactly as sent - hours times rate, no
+    # recalculation - so the premium goes there, with hours and a rate on the
+    # wage statement rather than a lump sum.
+    for key, bucket in sorted(buckets.items(), key=lambda kv: -kv[1]["rate"]):
         hourly(tier_ids.get(key, ids.get("regular", 1)),
-               bucket["hours"] - ot - dt, bucket["rate"],
+               bucket["hours"], bucket["rate"],
                note=_jobs_note(by_tier.get(key, [])))
-        hourly(ids.get("overtime", 2), ot, regular_rate * Decimal("1.5"), ob3=ot,
-               note=_overtime_note(caregiver, "ot_hours"))
-        hourly(ids.get("double_overtime", 22), dt, regular_rate * 2, ob3=dt,
-               note=_overtime_note(caregiver, "dt_hours"))
-    elif buckets:
-        for key, bucket in sorted(buckets.items(), key=lambda kv: -kv[1]["rate"]):
-            hourly(tier_ids.get(key, ids.get("regular", 1)),
-                   bucket["hours"], bucket["rate"],
-                   note=_jobs_note(by_tier.get(key, [])))
-        # Premium only: the straight time is already in the rows above.
-        hourly(ids.get("overtime", 2), ot, regular_rate * Decimal("0.5"), ob3=ot,
-               note=_overtime_note(caregiver, "ot_hours"))
-        hourly(ids.get("double_overtime", 22), dt, regular_rate, ob3=dt,
-               note=_overtime_note(caregiver, "dt_hours"))
+    # The premium goes in as money, not as hours at a rate. Hours on a custom
+    # item land in OnPay's Regular hours column, which would count the same
+    # hour twice and put a total on the wage statement that nobody worked -
+    # 37.50 for Angela Hanson, who worked 26.75.
+    cash(ids.get("overtime_premium", 17), caregiver.ot_premium,
+         treat_as_cash=False, ob3=ot,
+         note=_premium_note(ot, regular_rate * Decimal("0.5"),
+                            _overtime_note(caregiver, "ot_hours")))
+    cash(ids.get("double_overtime_premium", 4), caregiver.dt_premium,
+         treat_as_cash=False, ob3=dt,
+         note=_premium_note(dt, regular_rate,
+                            _overtime_note(caregiver, "dt_hours")))
 
     # Salary and other flat pay. A salaried person has no bookings behind
     # them, so their pay goes on pay item 1 as a cash amount with no hours

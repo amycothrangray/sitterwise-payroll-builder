@@ -404,16 +404,21 @@ def _check_caregiver(caregiver: CaregiverPayroll, roster: dict[str, RosterEntry]
             "Check the long day is real before paying it.",
             key, name, _dt_bookings(caregiver),
         ))
-    if caregiver.uses_multiple_rates and (caregiver.ot_hours > 0 or caregiver.dt_hours > 0):
+    if caregiver.ot_hours > 0 or caregiver.dt_hours > 0:
         rates = ", ".join(f"${t.rate:.2f}" for t in caregiver.tiers if t.hours > 0)
         week = next((w for w in caregiver.weeks if w.ot_hours or w.dt_hours), None)
+        blended = (f" worked at {rates} this period, so their overtime is based on a "
+                   f"blended rate of ${week.regular_rate:.4f} an hour, not on either "
+                   "rate on its own, and") if caregiver.uses_multiple_rates else " has overtime, and"
         out.append(Finding(
-            "mixed_rate_overtime", REVIEW,
-            f"{name} has overtime across two different rates",
-            f"{name} worked at {rates} this period, so their overtime is based on a blended "
-            f"rate of ${week.regular_rate:.4f} an hour, not on either rate on its own. "
-            "OnPay will not work this out correctly on its own.",
-            "Enter the overtime in OnPay as a dollar amount, not as hours. The card shows the figure.",
+            "overtime_premium_by_hand", REVIEW,
+            f"{name}'s overtime does not go in OnPay's Overtime column",
+            f"{name}{blended} OnPay recalculates anything put on its Overtime or Double "
+            "Overtime pay items, whatever rate it is given. On the week of 7 September "
+            "2026 it did that to eleven people and overpaid them $466.99 between them. "
+            "The premium is already worked out - the card shows it.",
+            "The upload file handles this. If you are typing instead, put the premium on "
+            "Overtime Premium as a dollar amount and leave the Overtime hours column empty.",
             key, name, _ot_bookings(caregiver) + _dt_bookings(caregiver),
         ))
 

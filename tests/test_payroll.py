@@ -249,7 +249,7 @@ class TestOvertime(PayrollCase):
         self.assertEqual(tess.ot_hours, money("2.00"))
         self.assertEqual(tess.ot_premium, money("25.50"))
         self.assertEqual(tess.total_paid, money("280.50"))
-        self.assertIn("mixed_rate_overtime", self.codes("Tess Okafor"))
+        self.assertIn("overtime_premium_by_hand", self.codes("Tess Okafor"))
 
     def test_double_time_past_twelve_hours(self):
         # Priya Raman: 13 hrs on Aug 5 at $23
@@ -723,21 +723,24 @@ class TestExports(PayrollCase):
                           if line["hours"]}
             self.assertEqual(from_sheet, from_lines, caregiver.name)
 
-    def test_overtime_hours_are_not_also_in_the_regular_column(self):
+    def test_every_hour_is_in_the_sheet_once_at_the_rate_worked(self):
+        """Overtime hours are paid straight in the rate rows and topped up
+        with a premium in money, so they appear exactly once."""
         rows = list(csv.DictReader(io.StringIO(
             exports.onpay_entry_csv(self.payroll, self.roster))))
         checked = 0
         for caregiver in self.payroll.caregivers:
-            if not caregiver.ot_hours or caregiver.uses_multiple_rates:
+            if not caregiver.ot_hours:
                 continue
             row = next(r for r in rows if r["Caregiver"] == caregiver.name)
+            hours = sum((money(v) for k, v in row.items()
+                         if k.endswith("hours") and v), Decimal("0"))
             self.assertEqual(
-                money(row["Regular hours"]) + money(caregiver.ot_hours)
-                + money(caregiver.dt_hours),
+                hours,
                 money(caregiver.hours_worked) + money(caregiver.guarantee_hours),
                 caregiver.name)
             checked += 1
-        self.assertTrue(checked, "no single-rate overtime caregiver to check")
+        self.assertTrue(checked, "no overtime caregiver to check")
 
     def test_the_entry_sheet_still_has_a_row_per_caregiver(self):
         rows = list(csv.DictReader(io.StringIO(
