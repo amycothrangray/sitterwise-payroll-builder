@@ -39,7 +39,7 @@ def money(value) -> Decimal:
 class OnPayImportFile(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        rules = Rules.load()
+        rules = Rules.load(Path(__file__).parent / "fixtures" / "rules-2026-08.json")
         first = build_run(FIXTURE, rules, WEEK_START, WEEK_END, recurring=[LISSA])
         cls.roster = {
             c.key: RosterEntry(c.key, c.name or "Unnamed", READY,
@@ -299,7 +299,7 @@ class OnPayImportFile(unittest.TestCase):
                          sum((Decimal(r["hours"] or 0) for r in self.rows), Decimal(0)))
 
     def test_already_paid_run_cannot_download_an_empty_upload(self):
-        duplicate = build_run(FIXTURE, Rules.load(), WEEK_START, WEEK_END,
+        duplicate = build_run(FIXTURE, Rules.load(Path(__file__).parent / "fixtures" / "rules-2026-08.json"), WEEK_START, WEEK_END,
                               roster=self.roster,
                               previously_paid={j.booking_id: "Original payroll" for c in self.payroll.caregivers
                                                for j in c.jobs})
@@ -414,7 +414,7 @@ class NotesForThePayLines(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        rules = Rules.load()
+        rules = Rules.load(Path(__file__).parent / "fixtures" / "rules-2026-08.json")
         first = build_run(FIXTURE, rules, WEEK_START, WEEK_END, recurring=[LISSA])
         cls.roster = {
             c.key: RosterEntry(c.key, c.name or "Unnamed", READY,
@@ -454,15 +454,15 @@ class NotesForThePayLines(unittest.TestCase):
                     if l["id"] == str(self.mapping["pay_ids"]["overtime_premium"]))
         self.assertRegex(note, r"[A-Z][a-z]{2} \d")
 
-    def test_a_mileage_note_says_the_miles_being_paid_for(self):
+    def test_a_mileage_note_states_the_reimbursement_amount(self):
         for caregiver in self.payroll.caregivers:
             if caregiver.mileage_amount and caregiver.name not in ("June Salter",):
                 lines = [l for l in self.lines(caregiver.name) if l["id"] == "107"]
                 if not lines:
                     continue
                 self.assertIn("mileage", lines[0]["note"])
-                self.assertIn("paid", lines[0]["note"],
-                              "payable miles, not the round trip")
+                self.assertIn(f"${caregiver.mileage_amount:.2f}", lines[0]["note"])
+                self.assertNotIn("mi paid", lines[0]["note"])
                 return
         self.skipTest("no mileage in this week")
 

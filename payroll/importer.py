@@ -234,6 +234,13 @@ def _build_job(row_number, cell, rules: Rules, today: date) -> Job:
     _set_rate(job, cell, rules)
     _set_pay(job, rules, cell)
     _split_reimbursement(job, cell, rules)
+    if job.has_unexplained_hours_difference(
+            rules.minimum_hours if rules.minimum_enabled else Decimal("0"),
+            to_hours(rules.v("hours_mismatch_tolerance", 0.01))):
+        job.import_notes.append(
+            f"Sitterwise says {job.hours_exported} hours but the start and end "
+            f"times work out to {job.hours_worked}. The app used the clock."
+        )
     return job
 
 
@@ -254,14 +261,6 @@ def _set_hours_and_workday(job: Job, rules: Rules) -> None:
             job.import_notes.append(
                 "This shift runs past midnight. All of its hours are counted on "
                 f"{job.start.date():%b %-d}, the day it started."
-            )
-
-    if job.hours_exported is not None and job.hours_worked > 0:
-        gap = abs(job.hours_exported - job.hours_worked)
-        if gap > to_hours(rules.v("hours_mismatch_tolerance", 0.01)):
-            job.import_notes.append(
-                f"Sitterwise says {job.hours_exported} hours but the start and end "
-                f"times work out to {job.hours_worked}. The app used the clock."
             )
 
 
@@ -463,6 +462,23 @@ def _split_reimbursement(job: Job, cell, rules: Rules) -> None:
     of miles at the rate in force that day is almost certainly mileage. This
     whole function disappears the day Sitterwise stores miles properly.
     """
+    if rules.mileage_amount_only:
+        # The supplied dollar amount is authoritative. Distance, rate and
+        # approval metadata must not change it or prevent importing it.
+        stated_mileage = money(cell("mileage_amount"))
+        stated_other = cell("other_reimbursement")
+        if stated_mileage > 0:
+            job.mileage_amount = stated_mileage
+            job.other_reimbursement = (money(stated_other) if not is_blank(stated_other)
+                                       else max(Decimal("0"), job.reimbursement - stated_mileage))
+        elif re.search(r"\bmileage\b|\bmiles?\b", job.reimbursement_description, re.I):
+            job.other_reimbursement = money(stated_other)
+            job.mileage_amount = max(Decimal("0"), job.reimbursement - job.other_reimbursement)
+        else:
+            job.other_reimbursement = (money(stated_other) if not is_blank(stated_other)
+                                       else job.reimbursement)
+        return
+
     if _stated_mileage(job, cell, rules):
         return
 

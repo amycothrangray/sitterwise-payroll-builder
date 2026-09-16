@@ -114,7 +114,7 @@ def _summarise_bonus_with_overtime(caregivers: list[CaregiverPayroll],
     not. That is the same question about the same kind of bonus every week,
     so asking it eleven separate times buried everything else on the screen.
     """
-    if not rules.warn_bonus_with_overtime:
+    if rules.flat_sum_bonus_overtime or not rules.warn_bonus_with_overtime:
         return []
     affected = [c for c in caregivers
                 if c.bonus > 0 and (c.ot_hours > 0 or c.dt_hours > 0)]
@@ -334,6 +334,18 @@ def _check_caregiver(caregiver: CaregiverPayroll, roster: dict[str, RosterEntry]
     out: list[Finding] = []
     key, name = caregiver.key, caregiver.name
 
+    for week in caregiver.weeks:
+        if (rules.flat_sum_bonus_overtime and week.bonus_amount > 0
+                and week.bonus_regular_hours <= 0
+                and week.ot_hours + week.weekly_ot_hours + week.dt_hours > 0):
+            out.append(Finding(
+                "bonus_regular_hours_missing", STOP,
+                f"{name}'s Lifesaver overtime needs regular worked hours",
+                "The bonus earning week has no regular worked hours to use in the bonus calculation.",
+                "Check that the full workweek is included in this payroll.",
+                key, name, [j.booking_id for j in caregiver.jobs],
+            ))
+
     if caregiver.caregiver_id_disagrees:
         # Sitterwise gives every caregiver their own number. Two numbers under
         # one name means two people have been added up as one - their hours
@@ -406,10 +418,12 @@ def _check_caregiver(caregiver: CaregiverPayroll, roster: dict[str, RosterEntry]
         ))
     if caregiver.ot_hours > 0 or caregiver.dt_hours > 0:
         rates = ", ".join(f"${t.rate:.2f}" for t in caregiver.tiers if t.hours > 0)
-        week = next((w for w in caregiver.weeks if w.ot_hours or w.dt_hours), None)
+        week = next((w for w in caregiver.weeks if w.ot_hours or w.dt_hours or w.weekly_ot_hours), None)
         blended = (f" worked at {rates} this period, so their overtime is based on a "
                    f"blended rate of ${week.regular_rate:.4f} an hour, not on either "
                    "rate on its own, and") if caregiver.uses_multiple_rates else " has overtime, and"
+        if rules.job_rate_overtime:
+            blended = " has overtime paid using each job's rate or the higher weekly weighted rate, and"
         out.append(Finding(
             "overtime_premium_by_hand", NOTE,
             f"{name}'s overtime premium is included in the download",
@@ -462,6 +476,16 @@ def _check_job(job: Job, caregiver: CaregiverPayroll, rules: Rules) -> list[Find
     long_shift = Decimal(str(rules.v("suspiciously_long_shift_hours", 12)))
     short_shift = Decimal(str(rules.v("suspiciously_short_shift_hours", 0.5)))
 
+    if rules.review_duplicate_bonus_columns and job.bonus > 0 and job.lifesaver_bonus > 0:
+        out.append(Finding(
+            "bonus_columns_overlap", STOP,
+            f"{name}'s booking has two bonus amounts",
+            f"Booking {job.booking_id} contains Bonus ${job.bonus} and Lifesaver Bonus "
+            f"${job.lifesaver_bonus}. It is not clear whether both should be paid.",
+            "Confirm whether the two columns are separate payments or the same Lifesaver incentive.",
+            key, name, [job.booking_id],
+        ))
+
     if job.hours_worked <= 0:
         out.append(Finding(
             "no_hours", STOP,
@@ -501,18 +525,18 @@ def _check_job(job: Job, caregiver: CaregiverPayroll, rules: Rules) -> list[Find
             key, name, [job.booking_id],
         ))
 
-    if job.hours_exported is not None and job.hours_worked > 0:
-        gap = abs(job.hours_exported - job.hours_worked)
-        if gap > Decimal(str(rules.v("hours_mismatch_tolerance", 0.01))):
-            out.append(Finding(
-                "hours_disagree", REVIEW,
-                f"{name}'s hours do not agree on {_when(job)}",
-                f"Sitterwise says {job.hours_exported} hours on booking {job.booking_id}, but "
-                f"the start and end times work out to {job.hours_worked}. The app used the "
-                f"clock. " + _what_this_booking_paid(job),
-                "Check which one is right in Sitterwise.",
-                key, name, [job.booking_id],
-            ))
+    if job.has_unexplained_hours_difference(
+            rules.minimum_hours if rules.minimum_enabled else ZERO,
+            Decimal(str(rules.v("hours_mismatch_tolerance", 0.01)))):
+        out.append(Finding(
+            "hours_disagree", REVIEW,
+            f"{name}'s hours do not agree on {_when(job)}",
+            f"Sitterwise says {job.hours_exported} hours on booking {job.booking_id}, but "
+            f"the start and end times work out to {job.hours_worked}. The app used the "
+            f"clock. " + _what_this_booking_paid(job),
+            "Check which one is right in Sitterwise.",
+            key, name, [job.booking_id],
+        ))
 
     big_tip = Decimal(str(rules.v("large_tip_warning", 200)))
     if job.tip > big_tip:
@@ -613,6 +637,8 @@ def _check_job(job: Job, caregiver: CaregiverPayroll, rules: Rules) -> list[Find
             key, name, [job.booking_id],
         ))
 
+    if not rules.review_mileage_details:
+        out = [finding for finding in out if not finding.code.startswith("mileage_")]
     return out
 
 
@@ -678,22 +704,22 @@ def _check_data_gaps(jobs: list[Job], rules: Rules) -> list[Finding]:
             booking_ids=[j.booking_id for j in untipped],
         ))
 
-    undescribed = [j for j in jobs if j.other_reimbursement > 0]
+    undescribed = [j for j in jobs if j.other_reimbursement > 0
+                   and not j.reimbursement_description.strip()]
     if undescribed:
         total = sum((j.other_reimbursement for j in undescribed), ZERO)
         who = sorted({j.display_name for j in undescribed if j.display_name})
         out.append(Finding(
             "reimbursements_no_description", REVIEW,
             f"{len(undescribed)} reimbursements totalling ${total} have no description",
-            "These are not mileage, and Sitterwise has nowhere to record what they were "
-            f"for. Affects {', '.join(who)}.",
-            "Check what each one was for before paying it. Adding a description field to "
-            "Sitterwise would fix this for good.",
+            "These expense reimbursements have no description in the bookings download. "
+            f"Affects {', '.join(who)}.",
+            "Confirm what each expense was for and record its description in Sitterwise.",
             booking_ids=[j.booking_id for j in undescribed],
         ))
 
     mileage_jobs = [j for j in jobs if j.mileage_miles]
-    if mileage_jobs:
+    if mileage_jobs and rules.review_mileage_details:
         total = sum((j.mileage_amount for j in mileage_jobs), ZERO)
         out.append(Finding(
             "mileage_inferred", NOTE,

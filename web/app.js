@@ -115,9 +115,63 @@ VIEWS.more = () => `
       `<button class="card tool" onclick="go('${key}')"><h2>${label}</h2></button>`).join('') : ''}
   </div>`;
 
+/* One review question per decision, with the original evidence underneath.
+   Blocking findings are never grouped away or reclassified. */
+function reviewTopics(findings) {
+  const categories = {
+    double_time: ['long_days', 'Confirm unusually long shifts'],
+    long_shift: ['long_days', 'Confirm unusually long shifts'],
+    reimbursements_no_description: ['expenses', 'Check expense details'],
+    mileage_unverifiable: ['expenses', 'Check expense details'],
+    hours_disagree: ['hours', 'Check conflicting hours'],
+    bonus_with_overtime: ['bonuses', 'Check how bonuses affect overtime'],
+  };
+  const topics = new Map();
+  for (const finding of findings.filter(f => f.level === 'review')) {
+    const [key, title] = categories[finding.code] || [finding.code, finding.title];
+    if (!topics.has(key)) topics.set(key, {key, title, findings: []});
+    topics.get(key).findings.push(finding);
+  }
+  return [...topics.values()];
+}
+
+function reviewTopicCard(topic) {
+  return `<details class="review-topic">
+    <summary>${esc(topic.title)}</summary>
+    <div class="review-topic-details">${topic.findings.map(findingCard).join('')}</div>
+  </details>`;
+}
+
+function finishedPayrollView() {
+  const {run, totals, findings} = S.run;
+  const topics = reviewTopics(findings), stops = findings.filter(f => f.level === 'stop');
+  const notes = findings.filter(f => f.level === 'note');
+  return `<div class="payroll-flow">
+    <div class="pagehead"><h1>${esc(run.label)}</h1><p class="sub">Finished and locked</p></div>
+    <section class="card">
+      <h2>Payroll record</h2>
+      <p class="finished-total">${money(totals.total_paid)}</p>
+      <p>${plural(totals.caregivers, 'person', 'people')} · ${plural(totals.jobs, 'booking', 'bookings')}</p>
+      <p class="muted">This week is marked finished in the app. Its checks are kept below for reference.</p>
+      <div class="row"><button class="btn btn-primary" onclick="go('home')">Start next payroll</button>
+      <button class="btn" onclick="go('cards')">View pay details</button>
+      <button class="btn" onclick="go('exports')">Reports</button></div>
+    </section>
+    ${(topics.length || stops.length || notes.length) ? `<details class="card historical-checks">
+      <summary>Checks for this finished week</summary>
+      <p class="muted">These are historical checks, not a new checklist for next week's payroll. Finishing a week does not mark each finding resolved.</p>
+      ${stops.map(findingCard).join('')}
+      ${topics.map(reviewTopicCard).join('')}
+      ${notes.length ? `<details><summary>Calculation details</summary>${notes.map(findingCard).join('')}</details>` : ''}
+    </details>` : ''}
+  </div>`;
+}
+
 VIEWS.payroll = () => {
+  if (S.run.run.locked) return finishedPayrollView();
   const r = S.run, item = S.downloads.find(e => e.key === 'onpay_import');
-  const issues = r.findings.filter(f => f.level === 'stop' || f.level === 'review');
+  const stops = r.findings.filter(f => f.level === 'stop');
+  const topics = reviewTopics(r.findings);
   const waiting = r.waiting_notes || [];
   const blocked = item.download_blocked || waiting.length > 0;
   const recurring = r.caregivers.flatMap(c => (c.adjustments || [])
@@ -131,9 +185,8 @@ VIEWS.payroll = () => {
       <a href="#/home">Start a different week</a>
     </div></section>
     ${waiting.length ? `<div class="banner warn"><div><strong>${plural(waiting.length,'saved pay change needs','saved pay changes need')} attention</strong><p>Resolve these before downloading so they are not missed.</p><button class="btn" onclick="go('check')">Review pay changes</button></div></div>` : ''}
-    ${issues.length ? `<details class="card review-box" ${r.summary.blocked ? 'open' : ''}><summary>${r.summary.blocked ? 'Fix before downloading' : 'Review before paying'} · ${issues.length} ${issues.length === 1 ? 'check' : 'checks'}</summary>
-      ${issues.map(f => `<div class="flow-finding"><strong>${esc(f.title)}</strong><p>${esc(f.detail)}</p><p class="muted">${esc(f.what_to_do)}</p></div>`).join('')}
-      <button class="btn" onclick="go('check')">Open payroll checks</button></details>` : ''}
+    ${stops.length ? `<section class="card"><h2>Fix before downloading</h2>${stops.map(findingCard).join('')}<button class="btn" onclick="go('check')">Open payroll checks</button></section>` : ''}
+    ${topics.length ? `<section class="card"><h2>${plural(topics.length, 'question', 'questions')} before paying</h2><p class="muted">Open a question to see the people and bookings involved.</p>${topics.map(reviewTopicCard).join('')}</section>` : ''}
     <section class="card flow-step"><span class="step-number">2</span><div class="step-body">
       <h2>Download payroll for OnPay</h2>
       ${blocked ? `<p>There is something to fix before this file is complete.</p><ul>${(item.problems || []).filter(p => p.blocking).map(p => `<li><strong>${esc(p.caregiver)}</strong> ${esc(p.problem)}</li>`).join('')}</ul><button class="btn" onclick="go('roster')">OnPay connections</button>` : `<p>Import this file once into the matching week in OnPay.</p><a class="btn btn-primary btn-huge" href="/api/runs/${S.runId}/export/onpay_import" onclick="return confirmHistoricalDownload()">Download OnPay CSV</a><p class="file-totals">After importing, check: <strong>${item.summary.people} people · ${hrs(item.summary.hours)} hours · ${money(item.summary.total)}</strong></p>`}
@@ -340,9 +393,10 @@ async function createRun() {
    PAYROLL CHECK
    ===================================================================== */
 VIEWS.check = () => {
+  if (S.run.run.locked) return finishedPayrollView();
   const { summary, findings, run } = S.run;
   const stops = findings.filter(f => f.level === 'stop');
-  const reviews = findings.filter(f => f.level === 'review');
+  const topics = reviewTopics(findings);
   const notes = findings.filter(f => f.level === 'note');
   const waiting = (S.run.waiting_notes || []).filter(n => n.applies_itself && !n.problem);
   const manual = (S.run.waiting_notes || []).filter(n => !n.applies_itself || n.problem);
@@ -382,9 +436,9 @@ VIEWS.check = () => {
       <div class="big">${summary.ready}</div>
       <div class="lbl">${summary.ready === 1 ? 'caregiver is' : 'caregivers are'} ready</div>
     </button>
-    <button class="state ${summary.needs_review ? 'review' : 'quiet'}" onclick="showCards('needs_review')">
-      <div class="big">${summary.needs_review}</div>
-      <div class="lbl">need a look from you</div>
+    <button class="state ${topics.length ? 'review' : 'quiet'}" onclick="$('#reviewquestions')?.scrollIntoView()">
+      <div class="big">${topics.length}</div>
+      <div class="lbl">${topics.length === 1 ? 'review question' : 'review questions'}</div>
     </button>
     <button class="state ${summary.blocked ? 'blocked' : 'quiet'}" onclick="showCards('blocked')">
       <div class="big">${summary.blocked}</div>
@@ -398,14 +452,13 @@ VIEWS.check = () => {
     <div style="margin-top:12px">${stops.map(findingCard).join('')}</div>` : `
     <div class="banner good">Nothing is blocking this payroll.</div>`}
 
-  ${reviews.length ? `
-    <h2 style="margin-top:28px">${plural(reviews.length, 'thing needs', 'things need')} your attention</h2>
-    <div style="margin-top:12px">${reviews.map(findingCard).join('')}</div>` : ''}
+  ${topics.length ? `
+    <h2 id="reviewquestions" style="margin-top:28px">${plural(topics.length, 'question', 'questions')} before paying</h2>
+    <div class="card" style="margin-top:12px">${topics.map(reviewTopicCard).join('')}</div>` : ''}
 
-  ${notes.length ? `
-    <h2 style="margin-top:28px">Worth knowing</h2>
-    <p class="muted">Nothing to do here — this is the app telling you how it worked things out.</p>
-    <div style="margin-top:12px">${notes.map(findingCard).join('')}</div>` : ''}`;
+  ${notes.length ? `<details class="card" style="margin-top:28px">
+    <summary>Calculation details — no action needed</summary>
+    <div style="margin-top:12px">${notes.map(findingCard).join('')}</div></details>` : ''}`;
 };
 
 const findingCard = (f) => `
@@ -515,7 +568,7 @@ function payLines(c) {
   }
   if (num(c.tips) > 0) lines.push(line('Tips', 'Not Sitterwise wages — entered separately in OnPay',
     c.tips, jobsBehind(c, j => num(j.tip) > 0, j => money(j.tip))));
-  if (num(c.bonus) > 0) lines.push(line('Bonuses', 'Taxable', c.bonus,
+  if (num(c.bonus) > 0) lines.push(line('Lifesaver bonuses', 'Taxable', c.bonus,
     jobsBehind(c, j => num(j.bonus) + num(j.lifesaver_bonus) > 0,
       j => money(num(j.bonus) + num(j.lifesaver_bonus)))));
   if (num(c.adjustment_taxable_total) !== 0) {
@@ -525,14 +578,14 @@ function payLines(c) {
 
   const reimb = [];
   if (num(c.mileage_amount) > 0) {
-    reimb.push(line('Mileage', `${c.mileage_miles} miles`, c.mileage_amount,
+    reimb.push(line('Mileage reimbursement', 'Amount from bookings', c.mileage_amount,
       jobsBehind(c, j => num(j.mileage_amount) > 0,
-        j => `${j.mileage_miles} mi × $${num(j.mileage_rate).toFixed(3)} = ${money(j.mileage_amount)}`)));
+        j => money(j.mileage_amount))));
   }
   if (num(c.other_reimbursement) > 0) {
-    reimb.push(line('Other reimbursement', 'Sitterwise records no description',
+    reimb.push(line('Other reimbursement', 'Amount from bookings',
       c.other_reimbursement, jobsBehind(c, j => num(j.other_reimbursement) > 0,
-        j => money(j.other_reimbursement))));
+        j => [money(j.other_reimbursement), j.reimbursement_description].filter(Boolean).join(' — '))));
   }
   if (num(c.adjustment_nontaxable_total) !== 0) {
     reimb.push(line('Reimbursement adjustment', 'Added by hand', c.adjustment_nontaxable_total, ''));
@@ -557,9 +610,22 @@ const line = (label, math, amount, behind, subtle) => `
   </div>`;
 
 function otMath(c) {
+  const segments = (c.weeks || []).flatMap(w => w.premium_segments || [])
+    .filter(s => s.kind !== 'double_time');
+  if (segments.length) {
+    const groups = new Map();
+    segments.forEach(s => groups.set(s.premium_rate,
+      (groups.get(s.premium_rate) || 0) + num(s.hours)));
+    const bonus = (c.weeks || []).reduce((sum, w) => sum + num(w.bonus_ot_premium), 0);
+    return [...groups].map(([rate, hours]) => `${hrs(hours)} hrs × $${num(rate).toFixed(4)}`).join(' + ')
+      + ' additional overtime premium'
+      + (bonus ? ` + ${money(bonus)} Lifesaver incentive overtime` : '');
+  }
   const week = (c.weeks || []).find(w => num(w.ot_hours) + num(w.weekly_ot_hours) > 0);
   const rate = week ? num(week.regular_rate) : 0;
-  return `${hrs(c.ot_hours)} hrs × half of $${rate.toFixed(4)} — the premium on top of straight time`;
+  const bonusExtra = (c.weeks || []).reduce((sum, w) => sum + num(w.bonus_ot_premium), 0);
+  return `${hrs(c.ot_hours)} hrs × half of $${rate.toFixed(4)} — the premium on top of straight time`
+    + (bonusExtra ? ` + ${money(bonusExtra)} Lifesaver incentive overtime` : '');
 }
 
 function jobsBehind(c, test, describe) {
@@ -581,7 +647,11 @@ function jobsBehind(c, test, describe) {
 function overtimeBehind(c, doubleOnly) {
   const rows = [];
   (c.weeks || []).forEach(w => w.days.forEach(d => {
-    if (doubleOnly ? num(d.dt_hours) > 0 : num(d.ot_hours) > 0) rows.push({ w, d });
+    const weekly = (w.premium_segments || []).filter(s =>
+      s.day === d.day && s.kind === 'weekly_overtime').reduce((sum, s) => sum + num(s.hours), 0);
+    if (doubleOnly ? num(d.dt_hours) > 0 : num(d.ot_hours) > 0 || weekly > 0) {
+      rows.push({ w, d, weekly });
+    }
   }));
   if (!rows.length) return '';
   return `<details class="src"><summary>Which days caused it (${rows.length})</summary>
@@ -593,6 +663,7 @@ function overtimeBehind(c, doubleOnly) {
         <div class="muted" style="font-size:.92rem">${esc(week.regular_rate_explanation)}</div>
         ${rows.filter(r => r.w.week_start === ws).map(r => `
           <div style="margin-top:7px"><strong>${esc(r.d.day)}</strong> — ${esc(r.d.explanation)}
+          ${!doubleOnly && r.weekly ? `<div>${hrs(r.weekly)} of these hours also qualify for weekly overtime.</div>` : ''}
           <div class="faint">Bookings ${esc(r.d.booking_ids.join(', '))}</div></div>`).join('')}
       </div>`;
     }).join('')}
@@ -902,9 +973,9 @@ VIEWS.reconcile = () => {
       ${line('Overtime premium', '', totals.ot_premium)}
       ${num(totals.dt_premium) > 0 ? line('Double time premium', '', totals.dt_premium) : ''}
       ${line('Tips', 'Not Sitterwise wages', totals.tips)}
-      ${num(totals.bonus) > 0 ? line('Bonuses', '', totals.bonus) : ''}
+      ${num(totals.bonus) > 0 ? line('Lifesaver bonuses', '', totals.bonus) : ''}
       ${line('Taxable earnings', '', totals.taxable_earnings, '', true)}
-      ${line('Mileage', `${totals.mileage_miles} miles`, totals.mileage_amount)}
+      ${line('Mileage reimbursement', 'Amount from bookings', totals.mileage_amount)}
       ${line('Other reimbursements', '', totals.other_reimbursement)}
       <div class="payline total"><div class="plabel">Expected total employee payments</div>
         <div class="pamount">${money(totals.total_paid)}</div></div>

@@ -338,6 +338,35 @@ def _premium_note(hours, rate, days: str) -> str:
     return f"{bits} ({days})" if days else bits
 
 
+def _caregiver_premium_note(caregiver, double_time=False) -> str:
+    """Use the actual rate segments, including changes within the same day."""
+    notes = []
+    for week in caregiver.weeks:
+        segments = [s for s in week.premium_segments
+                    if (s["kind"] == "double_time") == double_time]
+        if segments:
+            groups = {}
+            for s in segments:
+                rate = Decimal(s["premium_rate"])
+                group = groups.setdefault(rate, {"hours": ZERO, "days": []})
+                group["hours"] += Decimal(s["hours"])
+                label = _day_label(date.fromisoformat(s["day"]))
+                if label not in group["days"]:
+                    group["days"].append(label)
+            notes.extend(_premium_note(g["hours"], rate, ", ".join(g["days"]))
+                         for rate, g in groups.items())
+        else:
+            hours = week.dt_hours if double_time else week.ot_hours + week.weekly_ot_hours
+            attr = "dt_hours" if double_time else "ot_hours"
+            labels = [_day_label(d.day) for d in week.days if getattr(d, attr)]
+            if not double_time and week.weekly_ot_hours:
+                labels.append(f"week of {_day_label(week.week_start)}")
+            if hours:
+                notes.append(_premium_note(hours, week.regular_rate *
+                    (Decimal("1") if double_time else Decimal("0.5")), ", ".join(labels)))
+    return "; ".join(notes)
+
+
 def _overtime_note(caregiver, attr: str) -> str:
     """Which days the overtime actually fell on."""
     days = []
@@ -352,11 +381,7 @@ def _reimbursement_note(caregiver) -> str:
     bits = []
     for job in caregiver.jobs:
         if job.mileage_amount:
-            # The payable miles, not the round trip - "100 mi" beside a
-            # 140-mile drive reads as an underpayment.
-            miles = job.mileage_payable_miles or job.mileage_miles
-            bits.append(f"{_day_label(job.workday)} mileage"
-                        + (f" {miles:g} mi paid" if miles else ""))
+            bits.append(f"{_day_label(job.workday)} mileage ${job.mileage_amount:.2f}")
         if job.other_reimbursement:
             what = job.reimbursement_description or "reimbursement"
             bits.append(f"{_day_label(job.workday)} {what}")
@@ -435,8 +460,6 @@ def onpay_pay_rows(caregiver: CaregiverPayroll, emp_num: str,
         if job.rate:
             bucket["rate"] = job.rate
 
-    worked = caregiver.hours_worked
-    regular_rate = (caregiver.straight_pay / worked) if worked else ZERO
     ot, dt = caregiver.ot_hours, caregiver.dt_hours
 
     by_tier: dict[str, list] = {}
@@ -466,12 +489,19 @@ def onpay_pay_rows(caregiver: CaregiverPayroll, emp_num: str,
     # amount alone is not sufficient; that exact omission rejected the file.
     cash(ids.get("overtime_premium", 17), caregiver.ot_premium,
          ob3=ot,
-         note=_premium_note(ot, regular_rate * Decimal("0.5"),
-                            _overtime_note(caregiver, "ot_hours")))
+         note=_caregiver_premium_note(caregiver))
     cash(ids.get("double_overtime_premium", 121), caregiver.dt_premium,
          ob3=dt,
-         note=_premium_note(dt, regular_rate,
-                            _overtime_note(caregiver, "dt_hours")))
+         note=_caregiver_premium_note(caregiver, double_time=True))
+
+    for item_key, attr in (("overtime_premium", "bonus_ot_premium"),
+                           ("double_overtime_premium", "bonus_dt_premium")):
+        extra = _q(sum((getattr(w, attr, ZERO) for w in caregiver.weeks), ZERO), _Q2)
+        if extra:
+            for row in rows:
+                if row["id"] == str(ids.get(item_key, 17 if item_key == "overtime_premium" else 121)):
+                    row["note"] = (row.get("note", "")
+                                   + f" + Lifesaver incentive overtime ${extra:.2f}").strip()
 
     # Salary and other flat pay. A salaried person has no bookings behind
     # them, so their pay goes on pay item 1 as a cash amount with no hours

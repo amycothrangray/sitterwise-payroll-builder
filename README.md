@@ -76,9 +76,8 @@ stops the import so a verified separate mapping can be configured first.
 
 ## What it works out for you
 
-- **Rates** — $23 regular, $28 for 3–4 children. The export carries neither a
-  rate nor a children count, so the app works the tier out from what each job
-  paid, and says so.
+- **Rates** — $23 regular, $28 for 3–4 children. Use the exported pay rate;
+  infer it from booking pay only when the rate is missing.
 - **The four-hour minimum** — a 2.5-hour job paid for 4 hours shows the
   top-up as its own line. Those extra hours are paid but not worked, so they
   don't trigger overtime.
@@ -86,27 +85,35 @@ stops the import so a verified separate mapping can be configured first.
   over 12, seventh-consecutive-day rules. Weekly overtime is off but still
   warned about; across all four real August pay weeks it would have added
   nothing, because daily overtime already covers everyone who passed 40 hours.
-- **Two rates in one week** — overtime uses the weighted average, with the
-  sum shown on the card.
+- **Two rates in one week** — overtime and double time follow the rate of
+  the job being worked. The weekly weighted rate is used whenever it is
+  higher. For example, 1.5 overtime hours on a $28 job receive a $21 premium
+  in addition to the $42 already included in hourly wages. Start times decide
+  which job crosses each threshold; CSV row order does not.
+- **Lifesaver bonuses** — flat-sum incentive overtime is added automatically.
+  Bookings with both bonus columns populated require clarification before export.
 - **Tips** — kept out of wages and out of the overtime rate. Their own OnPay
   category.
-- **Mileage** — Care.com jobs only, and only the miles **above 40** on a round
-  trip. A mileage-shaped amount on any other job is paid as an ordinary
-  reimbursement and flagged, as is anything over 50 miles that needed advance
-  approval, and anything that looks like the whole drive was paid rather than
-  the part policy covers.
+- **Mileage** — use the exported reimbursement amount. Distance, mileage
+  rates, and approval metadata do not change it or create review warnings.
 - **Reimbursements** — never taxable, never mixed with wages.
 
 ---
 
 ## Changing the rules
 
-Everything lives in **`rules.json`**, and most of it has a box on the
+Your settings live in **`data/rules.json`**, and most of them have a box on the
 **Settings** screen. Rates, the minimum, overtime thresholds, mileage rates by
 date, and which booking statuses get paid.
 
 Every finished payroll stores the rules it was run with, so reopening July
 shows July's rules rather than today's.
+
+The repository's `rules.json` supplies defaults for a new installation.
+Updating the code preserves existing settings. The September job-rate policy
+uses `overtime.regular_rate_method: job_rate_with_weighted_floor`; older saved
+payrolls retain `weighted_average` and their original amounts. A private
+history transfer carries the owner's current settings to the replacement Mac.
 
 To switch to personal-attendant treatment (9 hours a day, 45 a week, no double
 time), change three settings. No code changes. There are tests for it.

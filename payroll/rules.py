@@ -68,6 +68,8 @@ class Rules:
             raise RulesError(
                 "overtime.workweek_start_day must be a day name such as 'sunday'"
             )
+        if self.regular_rate_method not in ("weighted_average", "job_rate_with_weighted_floor"):
+            raise RulesError("Unknown overtime rate method; choose weighted_average or job_rate_with_weighted_floor")
         mileage = self.data.get("reimbursements", {}).get("mileage", {})
         for entry in mileage.get("rates_by_effective_date", []):
             date.fromisoformat(entry["effective"])  # raises if malformed
@@ -182,6 +184,10 @@ class Rules:
         return self.overtime.get("regular_rate_method", "weighted_average")
 
     @property
+    def job_rate_overtime(self) -> bool:
+        return self.regular_rate_method == "job_rate_with_weighted_floor"
+
+    @property
     def overnight_attribution(self) -> str:
         return self.overtime.get("overnight_attribution", "shift_start_day")
 
@@ -203,6 +209,14 @@ class Rules:
         return bool(self.data.get("bonuses", {}).get("warn_when_bonus_and_overtime_coincide", True))
 
     @property
+    def flat_sum_bonus_overtime(self) -> bool:
+        return self.data.get("bonuses", {}).get("overtime_method") == "california_flat_sum"
+
+    @property
+    def review_duplicate_bonus_columns(self) -> bool:
+        return bool(self.data.get("bonuses", {}).get("review_duplicate_columns", False))
+
+    @property
     def tips_in_regular_rate(self) -> bool:
         return bool(self.data.get("tips", {}).get("include_in_regular_rate", False))
 
@@ -214,6 +228,14 @@ class Rules:
     @property
     def detect_mileage(self) -> bool:
         return bool(self._mileage.get("detect_from_reimbursement", False))
+
+    @property
+    def mileage_amount_only(self) -> bool:
+        return bool(self._mileage.get("use_exported_amount_only", False))
+
+    @property
+    def review_mileage_details(self) -> bool:
+        return bool(self._mileage.get("review_details", False))
 
     @property
     def whole_mile_tolerance(self) -> Decimal:
