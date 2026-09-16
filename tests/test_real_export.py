@@ -47,7 +47,7 @@ class TestRealExport(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.rules = Rules.load()
+        cls.rules = Rules.load(Path(__file__).parent / "fixtures" / "rules-2026-08.json")
         cls.result = import_export(EXPORT, cls.rules)
         cls.roster = {
             j.caregiver_key: RosterEntry(j.caregiver_key, j.display_name, READY,

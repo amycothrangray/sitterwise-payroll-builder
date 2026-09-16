@@ -97,6 +97,20 @@ class Job:
     def expected_pay(self) -> Decimal:
         return self.straight_pay + self.guarantee_pay
 
+    def has_unexplained_hours_difference(self, minimum_hours: Decimal,
+                                         tolerance: Decimal) -> bool:
+        """A paid minimum is expected even when the export calls it worked hours."""
+        if self.hours_exported is None or self.hours_worked <= 0:
+            return False
+        if abs(self.hours_exported - self.hours_worked) <= tolerance:
+            return False
+        minimum_explains_difference = (
+            self.minimum_applied and 0 < self.hours_worked < minimum_hours
+            and abs(self.hours_exported - minimum_hours) <= tolerance
+            and abs(self.hours_paid - minimum_hours) <= tolerance
+        )
+        return not minimum_explains_difference
+
     def to_dict(self) -> dict:
         out = asdict(self)
         for key, value in list(out.items()):

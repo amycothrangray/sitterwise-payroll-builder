@@ -11,7 +11,8 @@ Order of operations, per caregiver:
      of everything they actually worked. For someone on a single rate this
      is just their rate.
   3. Within each workday, split hours into straight, overtime and double time.
-  4. Pay the premium on top of straight time, at the regular rate.
+  4. Pay the premium on top of straight time. With the job-rate policy,
+     use each overtime job's rate or the weighted rate, whichever is higher.
 
 Guarantee pay from the 4-hour minimum sits outside all of that: it is paid,
 but it is not hours worked, so it neither triggers overtime nor moves the
@@ -20,7 +21,7 @@ regular rate.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from .model import Job
@@ -87,6 +88,11 @@ class WeekResult:
     dt_premium: Decimal
     crossed_disabled_weekly_threshold: bool = False
     rates_used: list[str] = field(default_factory=list)
+    bonus_amount: Decimal = ZERO
+    bonus_regular_hours: Decimal = ZERO
+    bonus_ot_premium: Decimal = ZERO
+    bonus_dt_premium: Decimal = ZERO
+    premium_segments: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -104,6 +110,11 @@ class WeekResult:
             "dt_premium": str(self.dt_premium),
             "crossed_disabled_weekly_threshold": self.crossed_disabled_weekly_threshold,
             "rates_used": self.rates_used,
+            "bonus_amount": str(self.bonus_amount),
+            "bonus_regular_hours": str(self.bonus_regular_hours),
+            "bonus_ot_premium": str(self.bonus_ot_premium),
+            "bonus_dt_premium": str(self.bonus_dt_premium),
+            "premium_segments": self.premium_segments,
         }
 
 
@@ -431,6 +442,37 @@ def _calculate_week(week_start: date, jobs: list[Job], rules: Rules) -> WeekResu
 
     ot_premium = money((ot_hours * ot_factor + weekly_ot_hours * weekly_factor) * regular_rate)
     dt_premium = money(dt_hours * dt_factor * regular_rate)
+    premium_segments = []
+    if rules.job_rate_overtime:
+        premium_segments, ot_premium, dt_premium = _job_rate_premiums(
+            days, by_day, straight_earnings / hours_worked if hours_worked else ZERO,
+            weekly_ot_hours, rules)
+        explanation = (
+            f"Overtime follows the rate of the job where the hours were worked, "
+            f"using the weekly weighted rate of ${regular_rate:.4f} whenever it is higher. "
+            "All worked hours already receive their normal job rate; the amounts below "
+            "are additional premiums."
+        )
+
+    # California flat-sum incentives use actual non-overtime hours as the
+    # divisor and full 1.5x/2x multipliers, in addition to the bonus itself.
+    # The payroll period and earning period are the Monday-Sunday workweek.
+    # Source: https://www.dir.ca.gov/dlse/faq_overtime.htm (question 3).
+    bonus_amount = bonus_regular_hours = bonus_ot = bonus_dt = ZERO
+    if rules.flat_sum_bonus_overtime:
+        bonus_amount = money(sum((j.bonus + j.lifesaver_bonus for j in jobs), ZERO))
+        bonus_regular_hours = to_hours(hours_worked - ot_hours - dt_hours - weekly_ot_hours)
+        if bonus_amount > 0 and bonus_regular_hours > 0:
+            bonus_rate = bonus_amount / bonus_regular_hours
+            bonus_ot = money(bonus_rate * (ot_hours * rules.daily_ot_multiplier
+                                          + weekly_ot_hours * rules.weekly_ot_multiplier))
+            bonus_dt = money(bonus_rate * dt_hours * rules.daily_dt_multiplier)
+            ot_premium += bonus_ot
+            dt_premium += bonus_dt
+            if bonus_ot or bonus_dt:
+                explanation += (f" Lifesaver incentives: ${bonus_amount} divided by "
+                                f"{bonus_regular_hours} regular hours actually worked. "
+                                f"Additional overtime ${bonus_ot}; double time ${bonus_dt}.")
 
     return WeekResult(
         week_start=week_start,
@@ -447,7 +489,70 @@ def _calculate_week(week_start: date, jobs: list[Job], rules: Rules) -> WeekResu
         dt_premium=dt_premium,
         crossed_disabled_weekly_threshold=crossed_disabled,
         rates_used=rate_bits,
+        bonus_amount=bonus_amount,
+        bonus_regular_hours=bonus_regular_hours,
+        bonus_ot_premium=bonus_ot,
+        bonus_dt_premium=bonus_dt,
+        premium_segments=premium_segments,
     )
+
+
+def _job_rate_premiums(days: list[DayResult], by_day: dict[date, list[Job]],
+                       weighted_rate: Decimal, weekly_ot_hours: Decimal,
+                       rules: Rules) -> tuple[list[dict], Decimal, Decimal]:
+    """Allocate actual worked hours chronologically; paid minimums never enter.
+
+    Daily premiums are allocated first. Only remaining straight hours can
+    cross the weekly threshold, so no hour receives both daily and weekly OT.
+    The weighted-rate floor prevents a lower-rate job from reducing premiums.
+    Round each weekly pay-item total once, after summing its exact amounts.
+    """
+    segments, regular = [], []
+    ot_total = dt_total = ZERO
+
+    def add(job, hours, kind, factor):
+        nonlocal ot_total, dt_total
+        if hours <= 0:
+            return
+        premium_rate = max(job.rate, weighted_rate) * factor
+        amount = hours * premium_rate
+        if kind == "double_time":
+            dt_total += amount
+        else:
+            ot_total += amount
+        segments.append({
+            "day": job.workday.isoformat(), "booking_id": job.booking_id,
+            "kind": kind, "hours": str(to_hours(hours)),
+            "job_rate": str(job.rate), "premium_rate": str(premium_rate),
+        })
+
+    for day in days:
+        cursor = ZERO
+        for job in sorted(by_day[day.day], key=lambda j: (
+                j.start or datetime.combine(day.day, datetime.min.time()), j.row_number)):
+            end = cursor + job.hours_worked
+            normal = max(ZERO, min(end, day.straight_hours) - cursor)
+            if normal:
+                regular.append((job, normal))
+            overtime = max(ZERO, min(end, day.straight_hours + day.ot_hours)
+                           - max(cursor, day.straight_hours))
+            double = max(ZERO, end - max(cursor, day.straight_hours + day.ot_hours))
+            ot_multiplier = (rules.seventh_day_multiplier if day.is_seventh_consecutive_day
+                             else rules.daily_ot_multiplier)
+            dt_multiplier = (rules.seventh_day_beyond_multiplier if day.is_seventh_consecutive_day
+                             else rules.daily_dt_multiplier)
+            add(job, overtime, "daily_overtime", ot_multiplier - 1)
+            add(job, double, "double_time", dt_multiplier - 1)
+            cursor = end
+
+    if weekly_ot_hours:
+        regular_so_far = ZERO
+        for job, hours in regular:
+            end = regular_so_far + hours
+            weekly = max(ZERO, end - max(regular_so_far, rules.weekly_ot_threshold))
+            add(job, weekly, "weekly_overtime", rules.weekly_ot_multiplier - 1)
+            regular_so_far = end
+    return segments, money(ot_total), money(dt_total)
 
 
 def _split_day(day: date, worked: Decimal, is_seventh: bool,

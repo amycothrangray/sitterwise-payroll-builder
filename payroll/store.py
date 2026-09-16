@@ -16,9 +16,9 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from .engine import Adjustment
-from .roster import RosterEntry, READY, SETUP_INCOMPLETE
+from .roster import RosterEntry, READY, SETUP_INCOMPLETE, UNCHECKED
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+from .paths import DATA_DIR
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -123,7 +123,9 @@ CREATE TABLE IF NOT EXISTS recurring_pay (
     schedule      TEXT NOT NULL DEFAULT 'first_monday',
     taxable       INTEGER DEFAULT 1,
     active        INTEGER DEFAULT 1,
-    note          TEXT DEFAULT ''
+    note          TEXT DEFAULT '',
+    starts_on     TEXT DEFAULT '',
+    first_amount  TEXT DEFAULT ''
 );
 """
 
@@ -140,6 +142,13 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
         self._add_missing_columns()
+        self.normalise_roster_statuses()
+        self.db.commit()
+
+    def normalise_roster_statuses(self) -> None:
+        """An automatically seeded record is unknown, not an OnPay defect."""
+        self.db.execute("UPDATE roster SET status=? WHERE status=? AND source=?",
+                        (UNCHECKED, SETUP_INCOMPLETE, "added_automatically"))
         self.db.commit()
 
     def _add_missing_columns(self) -> None:
@@ -152,7 +161,9 @@ class Store:
         wanted = {"roster": {"onpay_name": "TEXT DEFAULT ''",
                              "onpay_rate": "TEXT DEFAULT ''",
                              "onpay_pay_type": "TEXT DEFAULT ''",
-                             "onpay_pay_frequency": "TEXT DEFAULT ''"}}
+                             "onpay_pay_frequency": "TEXT DEFAULT ''"},
+                  "recurring_pay": {"starts_on": "TEXT DEFAULT ''",
+                                    "first_amount": "TEXT DEFAULT ''"}}
         for table, columns in wanted.items():
             have = {row["name"] for row in
                     self.db.execute(f"PRAGMA table_info({table})")}
@@ -344,11 +355,8 @@ class Store:
     def ensure_roster_entries(self, people: list[tuple[str, str]]) -> int:
         """Add anyone being paid who is not on the roster yet.
 
-        They come in as "OnPay Setup Incomplete", which means "nobody has told
-        the app yet" rather than "definitely not set up". That shows up for
-        review without blocking payroll, because the app genuinely does not
-        know. Marking somebody "Not in OnPay" is a deliberate act by Amy, and
-        that does block.
+        Unknown setup is separate from an actual OnPay setup problem.
+        The download checks identifiers. An explicit "Not in OnPay" blocks.
         """
         added = 0
         known = set(self.roster())
@@ -356,8 +364,8 @@ class Store:
             if key and key not in known:
                 self.upsert_roster_entry(
                     RosterEntry(caregiver_key=key, display_name=name,
-                                status=SETUP_INCOMPLETE, source="added_automatically",
-                                note="Added automatically - confirm their OnPay setup"),
+                                status=UNCHECKED, source="added_automatically",
+                                note="Added from bookings; OnPay status not checked"),
                     quiet=True)
                 known.add(key)
                 added += 1
@@ -442,16 +450,19 @@ class Store:
 
     # -- recurring and non-booking pay -----------------------------------
     def add_recurring(self, entry: dict) -> str:
+        self._validate_recurring(entry)
         entry_id = entry.get("id") or uuid.uuid4().hex[:12]
         self.db.execute(
             """INSERT INTO recurring_pay (id,created_at,person_name,caregiver_key,amount,
-                                          frequency,schedule,taxable,active,note)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                                          frequency,schedule,taxable,active,note,
+                                          starts_on,first_amount)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (entry_id, entry.get("created_at") or now(), entry["person_name"],
              entry["caregiver_key"], str(entry["amount"]),
              entry.get("frequency", "monthly"), entry.get("schedule", "first_monday"),
              int(bool(entry.get("taxable", True))), int(bool(entry.get("active", True))),
-             entry.get("note", "")))
+             entry.get("note", ""), entry.get("starts_on", ""),
+             str(entry.get("first_amount") or "")))
         self.db.commit()
         self.log("recurring_added",
                  f"{entry['person_name']}: {entry['amount']} {entry.get('frequency', 'monthly')}")
@@ -464,8 +475,12 @@ class Store:
         return [dict(r) for r in self.db.execute(sql + " ORDER BY person_name")]
 
     def update_recurring(self, entry_id: str, fields: dict) -> None:
+        row = self.db.execute("SELECT * FROM recurring_pay WHERE id=?", (entry_id,)).fetchone()
+        if row is None:
+            raise ValueError("That recurring payment no longer exists.")
+        self._validate_recurring({**dict(row), **fields})
         allowed = ("person_name", "caregiver_key", "amount", "frequency", "schedule",
-                   "taxable", "active", "note")
+                   "taxable", "active", "note", "starts_on", "first_amount")
         sets, values = [], []
         for key in allowed:
             if key in fields:
@@ -478,6 +493,28 @@ class Store:
         self.db.execute(f"UPDATE recurring_pay SET {','.join(sets)} WHERE id=?", values)
         self.db.commit()
         self.log("recurring_edited", f"{entry_id}: {', '.join(sets)}")
+
+    @staticmethod
+    def _validate_recurring(entry: dict) -> None:
+        from datetime import date
+        from decimal import Decimal, InvalidOperation
+
+        starts_on = entry.get("starts_on") or ""
+        if starts_on:
+            try:
+                date.fromisoformat(starts_on)
+            except (TypeError, ValueError):
+                raise ValueError("Choose a valid start date for recurring pay.")
+        first_amount = entry.get("first_amount") or ""
+        if first_amount:
+            if not starts_on:
+                raise ValueError("A first-period amount needs a start date.")
+            try:
+                amount = Decimal(str(first_amount))
+                if not amount.is_finite() or amount <= 0:
+                    raise InvalidOperation
+            except (InvalidOperation, ValueError):
+                raise ValueError("The first-period amount must be a positive number.")
 
     def delete_recurring(self, entry_id: str) -> None:
         row = self.db.execute("SELECT * FROM recurring_pay WHERE id=?",

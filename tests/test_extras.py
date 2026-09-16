@@ -133,6 +133,30 @@ class ARecurringPayrollLine(unittest.TestCase):
         self.assertEqual(line.reimbursements, money("1500.00"))
 
 
+class DatedWeeklyPay(unittest.TestCase):
+    def setUp(self):
+        self.entry = dict(LISSA, frequency="weekly", amount="150.00",
+                          starts_on="2026-09-07", first_amount="225.00")
+
+    def test_new_weekly_pay_does_not_change_earlier_payrolls(self):
+        self.assertFalse(extras.is_due(self.entry, date(2026, 8, 31), date(2026, 9, 6)))
+        self.assertTrue(extras.is_due(self.entry, date(2026, 9, 7), date(2026, 9, 13)))
+        self.assertTrue(extras.is_due(self.entry, date(2026, 9, 14), date(2026, 9, 20)))
+
+    def test_first_period_exception_does_not_repeat(self):
+        first = extras.recurring_payroll(self.entry, date(2026, 9, 7), date(2026, 9, 13))
+        following = extras.recurring_payroll(self.entry, date(2026, 9, 14), date(2026, 9, 20))
+        self.assertEqual(first.total_paid, money("225.00"))
+        self.assertEqual(following.total_paid, money("150.00"))
+        self.assertIn("first-period amount", first.adjustments[0].reason)
+        self.assertEqual(self.entry["amount"], "150.00")
+
+    def test_start_date_without_exception_pays_the_usual_amount(self):
+        entry = dict(self.entry, amount="450.00", first_amount="")
+        line = extras.recurring_payroll(entry, date(2026, 9, 7), date(2026, 9, 13))
+        self.assertEqual(line.total_paid, money("450.00"))
+
+
 class TurningANoteIntoPay(unittest.TestCase):
     def test_a_bonus_is_taxable_and_sits_beside_the_work(self):
         note = {"kind": "bonus", "caregiver_key": "ada whitlow", "amount": "50",
@@ -250,6 +274,29 @@ class NotesSurviveInTheStore(unittest.TestCase):
         entry_id = self.store.add_recurring(dict(LISSA))
         self.store.update_recurring(entry_id, {"active": False})
         self.assertEqual(self.store.list_recurring(active_only=True), [])
+
+    def test_first_period_settings_survive_reopening_the_store(self):
+        entry_id = self.store.add_recurring(dict(LISSA, starts_on="2026-09-07",
+                                                  first_amount="225.00"))
+        path = self.store.path
+        self.store.close()
+        self.store = Store(path)
+        entry = self.store.list_recurring()[0]
+        self.assertEqual(entry["starts_on"], "2026-09-07")
+        self.assertEqual(entry["first_amount"], "225.00")
+        self.store.update_recurring(entry_id, {"first_amount": "200.00"})
+        self.assertEqual(self.store.list_recurring()[0]["first_amount"], "200.00")
+
+    def test_invalid_first_period_settings_do_not_change_saved_pay(self):
+        entry_id = self.store.add_recurring(dict(LISSA))
+        for fields in ({"first_amount": "225"},
+                       {"starts_on": "not-a-date"},
+                       {"starts_on": "2026-09-07", "first_amount": "NaN"},
+                       {"starts_on": "2026-09-07", "first_amount": "-10"}):
+            with self.assertRaises(ValueError):
+                self.store.update_recurring(entry_id, fields)
+        self.assertEqual(self.store.list_recurring()[0]["first_amount"], "")
+        self.assertEqual(self.store.list_recurring()[0]["starts_on"], "")
 
 
 if __name__ == "__main__":

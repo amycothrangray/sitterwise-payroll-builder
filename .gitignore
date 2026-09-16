@@ -11,3 +11,8 @@ __pycache__/
 # The Mac application is built on the machine that uses it - it has that
 # computer's folder path inside it, so it is never shared.
 Sitterwise Payroll.app/
+
+# Local distribution builds and private transfer files
+build-macos/
+*.sitterwise
+*.dmg

@@ -51,7 +51,7 @@ class PayrollCase(unittest.TestCase):
             write(FIXTURE)
 
     def setUp(self):
-        self.rules = Rules.load()
+        self.rules = Rules.load(Path(__file__).parent / "fixtures" / "rules-2026-08.json")
         for path, value in self.rules_overrides.items():
             target = self.rules.data
             *parents, leaf = path.split(".")
@@ -197,6 +197,50 @@ class TestRates(PayrollCase):
 # the four-hour minimum
 # =====================================================================
 class TestMinimumBooking(PayrollCase):
+
+    def import_hours_example(self, worked, exported, billed="4"):
+        from tests.fixtures.make_fixture import booking
+        row = booking("Belle Cruz", START, "09:00", worked, "23",
+                      total_hours=exported)
+        row["Hours Billed"] = billed
+        row["Minimum Applied"] = "False"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "minimum-example.csv"
+            with path.open("w", newline="") as fh:
+                writer = csv.DictWriter(fh, fieldnames=list(row))
+                writer.writeheader()
+                writer.writerow(row)
+            return build_run(path, self.rules, START, END, roster=self.roster)
+
+    def test_exported_four_hours_is_normal_for_a_short_booking(self):
+        for worked in ("2.50", "3.50", "3.75"):
+            with self.subTest(worked=worked):
+                run = self.import_hours_example(worked, "4")
+                self.assertNotIn("hours_disagree", {f.code for f in run.findings})
+                job = run.period_jobs[0]
+                self.assertFalse(any("The app used the clock" in n
+                                     for n in job.import_notes))
+                self.assertEqual(job.expected_pay, money("92"))
+                self.assertEqual(job.hours_worked, money(worked))
+                self.assertEqual(job.guarantee_hours, money("4") - money(worked))
+
+    def test_the_minimum_does_not_hide_other_hours_disagreements(self):
+        for worked, exported, billed in (("3.5", "3.75", "4"),
+                                         ("5", "4", "5"),
+                                         ("3.5", "4", "5")):
+            with self.subTest(worked=worked, exported=exported, billed=billed):
+                run = self.import_hours_example(worked, exported, billed)
+                self.assertIn("hours_disagree", {f.code for f in run.findings})
+                self.assertTrue(any("The app used the clock" in n
+                                    for n in run.period_jobs[0].import_notes))
+
+    def test_minimum_explanation_uses_the_configured_policy(self):
+        self.rules.data["minimum_booking"]["minimum_hours"] = 3
+        run = self.import_hours_example("2.5", "3", "3")
+        self.assertNotIn("hours_disagree", {f.code for f in run.findings})
+        self.rules.data["minimum_booking"]["enabled"] = False
+        run = self.import_hours_example("2.5", "3", "3")
+        self.assertIn("hours_disagree", {f.code for f in run.findings})
 
     def test_short_job_is_topped_up_to_four_hours(self):
         # Belle Cruz worked 2.5 hrs and was paid for 4.
@@ -358,6 +402,8 @@ class TestPersonalAttendantRules(PayrollCase):
 # =====================================================================
 class TestExtraPayments(PayrollCase):
 
+    rules_overrides = {"reimbursements.mileage.review_details": True}
+
     def test_tip_is_kept_separate_from_wages(self):
         # Nina Alvarez: 4 hrs x $23 = $92.00, plus a $75 tip = $167.00
         nina = self.person("Nina Alvarez")
@@ -403,6 +449,30 @@ class TestExtraPayments(PayrollCase):
         self.assertEqual(hana.taxable_earnings, money("218.00"))
         self.assertEqual(hana.reimbursements, money("41.04"))
         self.assertEqual(hana.total_paid, money("259.04"))
+
+    def test_expenses_with_descriptions_do_not_ask_for_descriptions(self):
+        for job in self.result.jobs:
+            if job.other_reimbursement > 0:
+                job.reimbursement_description = "Parking receipt"
+        rebuilt = build_run(FIXTURE, self.rules, START, END, roster=self.roster,
+                            import_result=self.result)
+        self.assertNotIn("reimbursements_no_description",
+                         {f.code for f in rebuilt.findings})
+        self.assertEqual(rebuilt.totals(), self.payroll.totals())
+
+    def test_expense_warning_lists_only_the_missing_description(self):
+        expenses = [j for j in self.result.jobs if j.other_reimbursement > 0]
+        for job in expenses:
+            job.reimbursement_description = "Parking receipt"
+        missing = expenses[0]
+        missing.reimbursement_description = "  "
+        rebuilt = build_run(FIXTURE, self.rules, START, END, roster=self.roster,
+                            import_result=self.result)
+        findings = [f for f in rebuilt.findings
+                    if f.code == "reimbursements_no_description"]
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].booking_ids, [missing.booking_id])
+        self.assertEqual(rebuilt.totals(), self.payroll.totals())
 
     def test_the_round_trip_and_the_payable_miles_are_both_recorded(self):
         # Hana Kimura: a 94-mile round trip, 54 of them payable, $41.04.
@@ -457,6 +527,8 @@ class TestMileagePolicy(PayrollCase):
     so these are checks against stated figures rather than inferences.
     """
 
+    rules_overrides = {"reimbursements.mileage.review_details": True}
+
     def test_only_the_miles_above_forty_are_payable(self):
         for trip, payable in ((40, 0), (45, 5), (55, 15), (80, 40)):
             self.assertEqual(self.rules.payable_miles(Decimal(trip)), Decimal(payable))
@@ -506,6 +578,8 @@ class TestMileageWithoutRoundTrip(PayrollCase):
     nothing in the data settles which - so it says so instead of accusing
     anyone of an overpayment.
     """
+
+    rules_overrides = {"reimbursements.mileage.review_details": True}
 
     def test_it_says_it_cannot_check_rather_than_claiming_an_overpayment(self):
         # Pearl Adeyemi: $3.80 of mileage, no Round Trip Miles.
@@ -701,7 +775,7 @@ class TestExports(PayrollCase):
     def test_every_export_is_produced_and_has_content(self):
         for item in exports.all_exports(self.payroll, self.roster):
             self.assertTrue(item["content"].strip(), item["key"])
-            self.assertTrue(item["filename"].endswith(".csv"))
+            self.assertTrue(item["filename"].endswith((".csv", ".txt")))
 
     def test_the_onpay_grid_has_a_row_for_every_caregiver(self):
         csv_text = exports.onpay_entry_csv(self.payroll, self.roster)

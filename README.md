@@ -3,7 +3,7 @@
 Turns a Sitterwise bookings export into everything you need to enter payroll
 into OnPay, with the arithmetic shown for every figure.
 
-Runs on your own computer. No accounts, no cloud, nothing leaves the machine.
+Runs on your own computer. Payroll data stays local unless you choose to upload it to OnPay or share the notes task with ChatGPT Work.
 
 Sitterwise payroll runs **weekly, Monday through Sunday**. Pay stubs go out by
 email through OnPay on Tuesday, and direct deposit lands on Friday.
@@ -11,6 +11,10 @@ email through OnPay on Tuesday, and direct deposit lands on Friday.
 ---
 
 ## Running it
+
+For a downloadable Mac app with its own Python runtime and a private history
+transfer, see [Standalone Mac distribution](docs/MAC-DISTRIBUTION.md).
+The source-folder launcher described below remains available for development.
 
 Double-click **`Start Sitterwise Payroll.command`**. It opens in your browser.
 Leave the black window open while you work; close it when you're done.
@@ -48,58 +52,32 @@ place.
 
 ## How a payroll goes
 
-**1. Upload** the export from Sitterwise. Your export is a whole month, so the
-app asks which pay week you mean. Sitterwise pays **weekly, Monday to Sunday**,
-so it lists those weeks with the number of jobs in each and pre-selects the
-most recent complete one. Half-months are offered underneath in case you ever
-need to run one.
+1. **Upload bookings** and choose the Monday–Sunday pay week.
+2. **Download OnPay CSV**, import it once in OnPay, and compare the people,
+   hours, and total shown in the app.
+3. **Copy notes for ChatGPT Work** and paste the task into a local Work chat
+   with your signed-in browser selected. It contains every paycheck memo,
+   employee identifiers, and amounts to verify. The task authorizes notes only.
+4. Review and submit payroll yourself in OnPay, then **Mark this week finished**
+   in the app to protect against paying the same bookings again.
 
-**When a pay week crosses a month end,** pick or drop *both* months' exports.
-Sitterwise exports a month at a time and payroll runs Monday to Sunday, so the
-week of Monday 31 August 2026 needs one day from August and six from
-September. The app joins them and says what it did — how many bookings came
-from each file, which were in both and counted once, and any booking whose two
-copies disagree, where the newer export is used.
+The main navigation is New payroll, This payroll, History, and More. Settings,
+roster connections, detailed checks, manual entry, and reports are under More.
+Only actionable checks appear in the everyday workflow; an unknown local
+roster status no longer means someone is absent from OnPay. An employee list
+without Clock Users can confirm presence without falsely reporting incomplete setup.
 
-A booking recorded twice inside *one* export is left alone, because that is a
-problem the payroll check reports and hiding it would quietly drop somebody's
-pay.
+A download that would omit anyone is blocked until their issue is resolved.
+Scheduled pay needs a verified OnPay Clock User too. If an employee has both
+booking wages and recurring pay on Regular, the duplicate pay-item check
+stops the import so a verified separate mapping can be configured first.
 
-**2. Payroll check.** Three numbers, in plain English:
-
-```
-41 caregivers are ready
- 9 need a look from you
- 0 can't be paid yet
-```
-
-Click any of them, or any warning, to go straight to the problem.
-
-**3. Caregiver cards.** Collapsed by default. Open one and every figure can be
-expanded down to the bookings it came from — including which days caused
-overtime and how the blended rate was worked out.
-
-**4. Enter in OnPay.** Two ways:
-
-- the whole grid, one row per caregiver, in the categories OnPay wants
-- **one caregiver at a time**, with huge numbers, copy buttons, and a
-  "mark entered" button that moves you to the next person
-
-Put OnPay in one window and this in the other.
-
-**5. Check it adds up.** Every job in the period is either paid or explained,
-and the app's figures are compared against Sitterwise's own.
-
-**6. Finish.** The payroll locks. Those jobs can never be paid again in a
-later run unless you deliberately unlock it.
-
----
+[Weekly guide and setup](docs/WEEKLY-PAYROLL.md)
 
 ## What it works out for you
 
-- **Rates** — $23 regular, $28 for 3–4 children. The export carries neither a
-  rate nor a children count, so the app works the tier out from what each job
-  paid, and says so.
+- **Rates** — $23 regular, $28 for 3–4 children. Use the exported pay rate;
+  infer it from booking pay only when the rate is missing.
 - **The four-hour minimum** — a 2.5-hour job paid for 4 hours shows the
   top-up as its own line. Those extra hours are paid but not worked, so they
   don't trigger overtime.
@@ -107,27 +85,35 @@ later run unless you deliberately unlock it.
   over 12, seventh-consecutive-day rules. Weekly overtime is off but still
   warned about; across all four real August pay weeks it would have added
   nothing, because daily overtime already covers everyone who passed 40 hours.
-- **Two rates in one week** — overtime uses the weighted average, with the
-  sum shown on the card.
+- **Two rates in one week** — overtime and double time follow the rate of
+  the job being worked. The weekly weighted rate is used whenever it is
+  higher. For example, 1.5 overtime hours on a $28 job receive a $21 premium
+  in addition to the $42 already included in hourly wages. Start times decide
+  which job crosses each threshold; CSV row order does not.
+- **Lifesaver bonuses** — flat-sum incentive overtime is added automatically.
+  Bookings with both bonus columns populated require clarification before export.
 - **Tips** — kept out of wages and out of the overtime rate. Their own OnPay
   category.
-- **Mileage** — Care.com jobs only, and only the miles **above 40** on a round
-  trip. A mileage-shaped amount on any other job is paid as an ordinary
-  reimbursement and flagged, as is anything over 50 miles that needed advance
-  approval, and anything that looks like the whole drive was paid rather than
-  the part policy covers.
+- **Mileage** — use the exported reimbursement amount. Distance, mileage
+  rates, and approval metadata do not change it or create review warnings.
 - **Reimbursements** — never taxable, never mixed with wages.
 
 ---
 
 ## Changing the rules
 
-Everything lives in **`rules.json`**, and most of it has a box on the
+Your settings live in **`data/rules.json`**, and most of them have a box on the
 **Settings** screen. Rates, the minimum, overtime thresholds, mileage rates by
 date, and which booking statuses get paid.
 
 Every finished payroll stores the rules it was run with, so reopening July
 shows July's rules rather than today's.
+
+The repository's `rules.json` supplies defaults for a new installation.
+Updating the code preserves existing settings. The September job-rate policy
+uses `overtime.regular_rate_method: job_rate_with_weighted_floor`; older saved
+payrolls retain `weighted_average` and their original amounts. A private
+history transfer carries the owner's current settings to the replacement Mac.
 
 To switch to personal-attendant treatment (9 hours a day, 45 a week, no double
 time), change three settings. No code changes. There are tests for it.
@@ -218,33 +204,37 @@ attention · Caregiver detail · OnPay lines and notes · OnPay import file.
 
 OnPay switched CSV upload on for this account on 4 September 2026 and sent the
 specification. The file is **one row per pay item**, not one per person, with
-eight fixed columns and numeric pay types. Pay types used: 1 Regular,
-2 Overtime, 22 Double Overtime, 7 Bonus, 107 Reimbursement, 208 Controlled
-Tips. All of that lives in `onpay_mapping.json`.
+eight fixed columns and numeric pay types. Pay types used: 1 Regular, 119 3-4 Children, 17 Overtime Premium,
+121 Double Time Premium, 7 Bonus, 107 Reimbursement, 208 Controlled Tips. All of that lives in `onpay_mapping.json`.
 
-**One OnPay rule shapes the whole file:** an employee may appear only once on
-pay item 1 and once on pay item 2. So a caregiver who worked two rates in a
-week cannot have both on pay item 1, and the file is written two ways:
-
-*One rate* — the ordinary presentation.
+**Every paid hour stays at its original rate.** The standard tier uses item 1
+and the higher tier uses item 119. Overtime and double-time premiums are
+separate cash amounts, for both single-rate and mixed-rate caregivers:
 
 ```
-Regular    12.00h @ $23.00
-Overtime    2.00h @ $34.50
+Regular              5.00h @ $23.00
+3-4 Children         5.00h @ $28.00
+Overtime Premium                   $25.50
 ```
 
-*Two rates* — each rate keeps its own row at the rate actually worked, and the
-overtime row carries only the premium, because the straight time is already
-above it.
+The premium is already calculated by this app. Items 2 and 22 are never used:
+OnPay recalculates those items, which can change the amount paid.
 
-```
-3-4 Children   5.00h @ $28.00     (a Custom pay type in OnPay)
-Regular        5.00h @ $23.00
-Overtime       2.00h @ $12.75     (half the $25.50 weighted regular rate)
-```
+**Required OnPay setup:** Overtime Premium is custom item **17** and Double
+Time Premium is custom item **121**. Both must be **Non-Hourly**. Their CSV
+rows have `treat_as_cash=1`, a `cash_amount`, and blank `hours` and `rate`.
+Hourly rate rows keep `treat_as_cash` blank. Item 4 is Prior Pay Adjustment;
+do not rename it or use it for double time.
 
-Both come to the same money. The second just doesn't put a blended rate on the
-wage statement in place of the rates the caregiver actually worked.
+The Exports screen shows the people, paid hours and total actually in the
+upload, plus the required premium-item setup. Compare these totals with
+OnPay after importing. An empty file, conflicting pay-item mapping, shared
+Clock User or inconsistent total blocks the download. If a duplicate run
+has everybody marked already paid, reopen the original run from History.
+
+The last CSV column retains the configured overtime hours. Whether OnPay
+uses that column on custom items for OBBB reporting is still unconfirmed;
+matching the pay total alone does not verify that reporting.
 
 Salary is pay item 1 with a cash amount and no hours, the way OnPay's own
 template writes it. The four-hour minimum rides in the regular row — guarantee
@@ -261,7 +251,7 @@ Each pay line gets the note that belongs beside it:
 
 ```
 Regular        8.00h @ $23.00   Aug 3 Wall, Aug 5 Congdon
-Overtime       1.00h @ $34.50   Aug 5
+Overtime Premium      $11.50   1.00 hrs x $11.50 premium (Aug 5)
 Reimbursement          $76.00   Aug 6 mileage 100 mi paid
 ```
 
@@ -294,9 +284,8 @@ and it cannot run payroll — every note is pasted by the person running it.
 
 That screen also shows each line's hours and rate exactly as the import file
 writes them, so entering somebody by hand comes to the same money. Regular
-reads 8 hours rather than 9 for a caregiver with an hour of overtime, because
-OnPay wants the overtime hours on their own line rather than counted twice —
-the screen says so rather than leaving you to work it out.
+includes all nine hours for a caregiver with one hour of overtime; the extra
+half-rate premium is a separate cash amount, so the hours are counted once.
 
 **Two things never reach the file.** Anyone the payroll check has stopped, and
 anyone with no Clock User. Both are named on screen for entering by hand. The
