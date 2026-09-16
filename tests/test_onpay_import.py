@@ -105,10 +105,7 @@ class OnPayImportFile(unittest.TestCase):
     def test_pay_items_2_and_22_are_never_used(self):
         """OnPay recomputes anything on them, whatever rate we send.
 
-        The register for 7-13 September 2026 came back with every one of
-        these rows relabelled "Overtime Weighted" at a rate OnPay invented -
-        Olivia Doyle was sent 4 hours at $34.50 and paid $48.56 an hour.
-        Eleven people, $466.99 overpaid.
+        Dedicated premium items preserve the amount calculated by the app.
         """
         used = sorted({r["id"] for r in self.rows if r["id"] in ("2", "22")})
         self.assertEqual(used, [], "OnPay will recalculate these rows")
@@ -189,9 +186,7 @@ class OnPayImportFile(unittest.TestCase):
     def test_the_hours_in_the_file_are_the_hours_being_paid_for(self):
         """A premium carried as hours would count the same hour twice.
 
-        Angela Hanson worked 26.75 hours in the week of 7 September 2026 and
-        OnPay's wage statement said 37.50, because the premium rows put her
-        overtime hours in a second time.
+        Premium amounts must not duplicate worked hours on the wage statement.
         """
         for caregiver in self.payroll.caregivers:
             if caregiver.name in self.skipped or not caregiver.jobs:

@@ -46,7 +46,7 @@ def job_paid(worked, billed=None, minimum_flag="", rate="23"):
     rules = Rules.load()
     kw = {name: _empty(p.annotation) for name, p in FIELDS.items()
           if name != "self" and p.default is inspect.Parameter.empty}
-    kw.update(booking_id="b1", caregiver_name="Tess Okafor", client_name="Cameron",
+    kw.update(booking_id="b1", caregiver_name="Tess Okafor", client_name="Example family",
               start=datetime(2026, 9, 1, 9), end=datetime(2026, 9, 1, 12),
               hours_worked=Decimal(worked))
     job = Job(**kw)

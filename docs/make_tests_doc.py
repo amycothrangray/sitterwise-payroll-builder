@@ -120,37 +120,14 @@ reimbursements. There are tests for that too.
 
 ---
 
-## On the real August export
+## Private regression checks
 
-Ten further tests run against a real Sitterwise export when one is available
-(put it in `tests/fixtures/real/`, which git ignores, or point
-`SITTERWISE_EXPORT` at it). They check that all 324 rows read without error,
-that every paid job matches a known rate, that the payroll balances, that the
-four-hour minimum is recognised, that mileage only ever lands on Care.com jobs
-of 40 miles or more, that the pay week really does run Monday to Sunday, that
-the app suggests the right week, that weekly overtime would add nothing, and
-that these totals for the real pay week of **Mon 10 - Sun 16 August** have not
-moved:
-
-| | |
-|---|---:|
-| Caregivers | 29 |
-| Jobs | 59 |
-| Hours worked | 320.75 |
-| Regular: 283.75 hrs at $23 | $6,526.25 |
-| 3-4 children: 37.00 hrs at $28 | $1,036.00 |
-| Four-hour minimum top-up | $23.00 |
-| Overtime | 14.75 hrs, $182.06 premium |
-| Tips | $145.00 |
-| Bonuses | $60.00 |
-| Mileage: 108 miles | $82.08 |
-| Other reimbursements | $114.00 |
-| **Taxable earnings** | **$7,972.31** |
-| **Reimbursements** | **$196.08** |
-| **Total being paid** | **$8,168.39** |
-
-If a change moves one of those numbers, that should be a decision somebody
-made - not a surprise.
+Real exports and expected payroll totals belong in the ignored
+`tests/fixtures/real/` directory. Put the expected totals dictionary in
+`expected-totals.json` next to the export. The optional regression tests
+compare those private figures and check payroll reconciliation; public
+fixtures contain invented people and bookings. Do not commit real exports,
+expected totals, employee lists, or transfer archives.
 """
 
 

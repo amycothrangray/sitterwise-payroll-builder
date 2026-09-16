@@ -37,7 +37,7 @@ def main():
     licenses = assets / "licenses"
     licenses.mkdir(exist_ok=True)
     shutil.copyfile(Path(sysconfig.get_path("stdlib")) / "LICENSE.txt", licenses / "Python-LICENSE.txt")
-    for package in ("openpyxl", "et-xmlfile", "pypdf", "pyinstaller"):
+    for package in ("openpyxl", "et-xmlfile", "pypdf", "pyinstaller", "defusedxml"):
         dist = importlib.metadata.distribution(package)
         for file in dist.files or []:
             if file.name.upper().startswith(("LICEN", "COPYING")) and ".dist-info" in str(file):
@@ -60,7 +60,7 @@ def main():
             "--add-data", str(ROOT / "onpay_mapping.json") + ":.",
             "--add-data", str(assets / "build.json") + ":.",
             "--add-data", str(licenses) + ":licenses",
-            "--hidden-import", "pypdf", "--exclude-module", "tkinter",
+            "--hidden-import", "pypdf", "--hidden-import", "defusedxml.ElementTree", "--exclude-module", "tkinter",
             "--exclude-module", "numpy", "--exclude-module", "PIL"]
     identity = os.environ.get("SITTERWISE_CODESIGN_IDENTITY")
     if identity:

@@ -6,6 +6,7 @@
     python3 run.py --no-browser just start the server
 """
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -13,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
 def main() -> int:
+    os.umask(0o077)
     parser = argparse.ArgumentParser(description="Sitterwise payroll preparation")
     parser.add_argument("--port", type=int, default=8756)
     parser.add_argument("--no-browser", action="store_true")
@@ -21,10 +23,11 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
+        import defusedxml  # noqa: F401
         import openpyxl  # noqa: F401
     except ImportError:
-        print("\n  This app needs openpyxl to read Sitterwise's .xlsx exports.")
-        print("  Install it with:  python3 -m pip install openpyxl\n")
+        print("\n  This app needs its spreadsheet reader and XML protection installed.")
+        print("  Install it with:  python3 -m pip install -r requirements.txt\n")
         return 1
 
     from payroll.server import serve

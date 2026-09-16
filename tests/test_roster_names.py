@@ -1,7 +1,7 @@
 """Matching a caregiver to their OnPay record when the names differ.
 
-OnPay holds people under their legal name. Lissa's OnPay record is Elisabeth
-R Gray. Married names, preferred names and middle initials all do this. If
+OnPay holds people under their legal name. Jay's OnPay record is Jamie
+R Rivers. Married names, preferred names and middle initials all do this. If
 the roster matched on the Sitterwise name alone, importing OnPay's employee
 list would quietly make a second entry for the same person and then report
 the first as missing from OnPay.
@@ -34,20 +34,20 @@ class TheRosterRemembersTheOnPayName(unittest.TestCase):
 
     def test_a_legal_name_is_kept_alongside_the_working_name(self):
         self.store.upsert_roster_entry(RosterEntry(
-            caregiver_key="lissa", display_name="Lissa", status=READY,
-            onpay_clock_user="LG100", onpay_name="Elisabeth R Gray"))
-        entry = self.store.roster()["lissa"]
-        self.assertEqual(entry.display_name, "Lissa")
-        self.assertEqual(entry.onpay_name, "Elisabeth R Gray")
+            caregiver_key="jay", display_name="Jay", status=READY,
+            onpay_clock_user="LG100", onpay_name="Jamie R Rivers"))
+        entry = self.store.roster()["jay"]
+        self.assertEqual(entry.display_name, "Jay")
+        self.assertEqual(entry.onpay_name, "Jamie R Rivers")
 
     def test_it_survives_being_read_back_and_written_again(self):
         self.store.upsert_roster_entry(RosterEntry(
-            caregiver_key="lissa", display_name="Lissa", status=READY,
-            onpay_name="Elisabeth R Gray"))
-        entry = self.store.roster()["lissa"]
+            caregiver_key="jay", display_name="Jay", status=READY,
+            onpay_name="Jamie R Rivers"))
+        entry = self.store.roster()["jay"]
         entry.onpay_clock_user = "LG100"
         self.store.upsert_roster_entry(entry)
-        self.assertEqual(self.store.roster()["lissa"].onpay_name, "Elisabeth R Gray")
+        self.assertEqual(self.store.roster()["jay"].onpay_name, "Jamie R Rivers")
 
     def test_the_name_is_absent_by_default(self):
         self.store.upsert_roster_entry(
@@ -67,19 +67,19 @@ class AnOlderDatabaseGetsTheNewColumn(unittest.TestCase):
                 status TEXT NOT NULL, onpay_clock_user TEXT DEFAULT '',
                 onpay_employee_id TEXT DEFAULT '', note TEXT DEFAULT '',
                 updated_at TEXT, source TEXT DEFAULT 'manual')""")
-            old.execute("INSERT INTO roster VALUES ('lissa','Lissa','onpay_ready',"
+            old.execute("INSERT INTO roster VALUES ('jay','Jay','onpay_ready',"
                         "'LG100','','',NULL,'manual')")
             old.commit()
             old.close()
 
             store = Store(path)
             try:
-                entry = store.roster()["lissa"]
-                self.assertEqual(entry.display_name, "Lissa")
+                entry = store.roster()["jay"]
+                self.assertEqual(entry.display_name, "Jay")
                 self.assertEqual(entry.onpay_name, "")
-                entry.onpay_name = "Elisabeth R Gray"
+                entry.onpay_name = "Jamie R Rivers"
                 store.upsert_roster_entry(entry)
-                self.assertEqual(store.roster()["lissa"].onpay_name, "Elisabeth R Gray")
+                self.assertEqual(store.roster()["jay"].onpay_name, "Jamie R Rivers")
             finally:
                 store.close()
 
@@ -93,13 +93,13 @@ class AnOlderDatabaseGetsTheNewColumn(unittest.TestCase):
 
 class NamesAreComparedTheSameWayEverywhere(unittest.TestCase):
     def test_spacing_and_case_do_not_make_a_different_person(self):
-        self.assertEqual(normalise_name("  Elisabeth   R Gray "),
-                         normalise_name("elisabeth r gray"))
+        self.assertEqual(normalise_name("  Jamie   R Rivers "),
+                         normalise_name("jamie r rivers"))
 
     def test_a_legal_name_and_a_working_name_are_different_keys(self):
         # Which is exactly why the roster has to record the link.
-        self.assertNotEqual(normalise_name("Lissa"),
-                            normalise_name("Elisabeth R Gray"))
+        self.assertNotEqual(normalise_name("Jay"),
+                            normalise_name("Jamie R Rivers"))
 
 
 if __name__ == "__main__":

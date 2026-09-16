@@ -1,16 +1,6 @@
-"""A job that happened but was never closed out has to stop payroll.
+"""Synthetic regression: a past booking still marked confirmed must be reviewed.
 
-Booking 15362, Sunday 13 September 2026: Ketut Sudiasih worked four hours
-for $92.00. It was still marked "confirmed" in Sitterwise rather than
-"completed", so the app did not pay it - correctly, because "confirmed" does
-not mean the job happened. But all it said was a grey line reading "1 job in
-this period was never closed out", with no name, no date and no amount, sat
-among routine notes. Amy came within one click of sending a payroll that
-left a real caregiver out, and only caught it because OnPay disagreed.
-
-The app now stops for each person involved and says who, when and how much.
-
-Run them with:  python3 -m unittest discover -s tests -v
+The operator needs its caregiver, date and amount before closing payroll.
 """
 from __future__ import annotations
 
@@ -44,7 +34,7 @@ def _empty(annotation):
 def booking(booking_id, name, day, status="confirmed", hours="4.00", pay="92.00"):
     kw = {n: _empty(p.annotation) for n, p in FIELDS.items()
           if n != "self" and p.default is inspect.Parameter.empty}
-    kw.update(booking_id=booking_id, caregiver_name=name, client_name="Cameron",
+    kw.update(booking_id=booking_id, caregiver_name=name, client_name="Example family",
               start=datetime(day.year, day.month, day.day, 9),
               end=datetime(day.year, day.month, day.day, 13))
     job = Job(**kw)
@@ -66,35 +56,35 @@ def check(jobs, start=None, end=None):
 
 class APastJobStillMarkedConfirmed(unittest.TestCase):
     def test_stops_payroll(self):
-        found = check([booking("15362", "Ketut Sudiasih", YESTERDAY)])
+        found = check([booking("sample-123", "Casey Sample", YESTERDAY)])
         self.assertEqual([f.level for f in found], [STOP])
 
     def test_says_who_it_is(self):
-        found = check([booking("15362", "Ketut Sudiasih", YESTERDAY)])
-        self.assertIn("Ketut Sudiasih", found[0].title)
-        self.assertEqual(found[0].booking_ids, ["15362"])
+        found = check([booking("sample-123", "Casey Sample", YESTERDAY)])
+        self.assertIn("Casey Sample", found[0].title)
+        self.assertEqual(found[0].booking_ids, ["sample-123"])
 
     def test_says_how_much_they_would_lose(self):
-        found = check([booking("15362", "Ketut Sudiasih", YESTERDAY)])
+        found = check([booking("sample-123", "Casey Sample", YESTERDAY)])
         self.assertIn("4.00 hours", found[0].detail)
         self.assertIn("$92.00", found[0].detail)
 
     def test_says_what_to_do_about_it(self):
-        found = check([booking("15362", "Ketut Sudiasih", YESTERDAY)])
+        found = check([booking("sample-123", "Casey Sample", YESTERDAY)])
         self.assertIn("completed", found[0].what_to_do)
 
 
 class OnePersonPerFinding(unittest.TestCase):
     def test_two_people_are_two_stops(self):
-        found = check([booking("1", "Ketut Sudiasih", YESTERDAY),
+        found = check([booking("1", "Casey Sample", YESTERDAY),
                        booking("2", "Anna Lucero", YESTERDAY)])
         self.assertEqual(len(found), 2)
         self.assertEqual({f.caregiver_name for f in found},
-                         {"Ketut Sudiasih", "Anna Lucero"})
+                         {"Casey Sample", "Anna Lucero"})
 
     def test_two_bookings_for_one_person_are_added_up(self):
-        found = check([booking("1", "Ketut Sudiasih", YESTERDAY),
-                       booking("2", "Ketut Sudiasih", YESTERDAY - timedelta(days=1))])
+        found = check([booking("1", "Casey Sample", YESTERDAY),
+                       booking("2", "Casey Sample", YESTERDAY - timedelta(days=1))])
         self.assertEqual(len(found), 1)
         self.assertIn("8.00 hours", found[0].detail)
         self.assertIn("$184.00", found[0].detail)

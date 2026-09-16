@@ -11,7 +11,9 @@ import hashlib
 from functools import wraps
 import json
 import mimetypes
+import os
 import re
+import secrets
 import shutil
 import socket
 import threading
@@ -26,6 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from . import calsavers, combine, exports, extras, settings_files, transfer
+from .security import MAX_UPLOAD_BYTES, MAX_JSON_BYTES, access_token, local_headers
 from .engine import Adjustment
 from .importer import import_export
 from .roster import (NOT_IN_ONPAY, READY, RosterEntry, STATUS_LABELS,
@@ -218,6 +221,10 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "SitterwisePayroll"
     store: Store = None            # set on the server instance
 
+    def setup(self):
+        super().setup()
+        self.connection.settimeout(30)
+
     def log_message(self, fmt, *args):   # keep the terminal quiet
         pass
 
@@ -228,6 +235,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        # Inline handlers remain in the existing UI; imported strings must
+        # be encoded separately for HTML and JavaScript contexts.
+        self.send_header("Content-Security-Policy", "default-src 'none'; "
+                         "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+                         "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
+                         "base-uri 'none'; form-action 'none'; object-src 'none'")
         for key, value in (extra_headers or {}).items():
             self.send_header(key, value)
         self.end_headers()
@@ -240,24 +256,57 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": message}, status)
 
     def _body(self) -> bytes:
-        length = int(self.headers.get("Content-Length") or 0)
-        return self.rfile.read(length) if length else b""
+        lengths = self.headers.get_all("Content-Length", [])
+        if len(lengths) != 1 or not re.fullmatch(r"[0-9]+", lengths[0]):
+            raise ApiError("A valid request length is required.", 400)
+        if self.headers.get("Transfer-Encoding"):
+            raise ApiError("Chunked requests are not supported.", 400)
+        length = int(lengths[0])
+        limit = transfer.MAX_BYTES if urlparse(self.path).path == "/api/history-transfer" else MAX_UPLOAD_BYTES
+        if "application/json" in self.headers.get("Content-Type", ""):
+            limit = MAX_JSON_BYTES
+        if length > limit:
+            raise ApiError("This file or request is too large.", 413)
+        raw = self.rfile.read(length) if length else b""
+        if len(raw) != length:
+            raise ApiError("The upload was interrupted. Please try again.")
+        return raw
 
     def _json_body(self) -> dict:
         raw = self._body()
         if not raw:
             return {}
         try:
-            return json.loads(raw.decode("utf-8"))
-        except json.JSONDecodeError as exc:
+            value = json.loads(raw.decode("utf-8"))
+            if not isinstance(value, dict):
+                raise ApiError("The app needs a JSON object.")
+            return value
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise ApiError(f"The app could not read that request: {exc}")
 
     # -- routing --------------------------------------------------------
+    def _check_request(self):
+        port = self.server.server_address[1]
+        hosts = self.headers.get_all("Host", [])
+        if len(hosts) != 1 or hosts[0] not in (f"127.0.0.1:{port}", f"localhost:{port}"):
+            raise ApiError("This app only accepts its own local address.", 403)
+        origin = self.headers.get("Origin")
+        if ((origin is not None and origin != "http://" + hosts[0])
+                or self.headers.get("Sec-Fetch-Site") == "cross-site"):
+            raise ApiError("Requests from other websites are not allowed.", 403)
+        if not self.path.startswith("/"):
+            raise ApiError("Invalid request address.")
+        if unquote(urlparse(self.path).path).startswith("/api/"):
+            expected = "Bearer " + self.server.access_token
+            if not secrets.compare_digest(self.headers.get("Authorization", ""), expected):
+                raise ApiError("Open Sitterwise Payroll from the app or its launcher to connect securely.", 401)
+
     @serialized
     def do_GET(self):
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
         try:
+            self._check_request()
             if path.startswith("/api/"):
                 return self._api_get(path, parse_qs(parsed.query))
             return self._static(path)
@@ -269,15 +318,13 @@ class Handler(BaseHTTPRequestHandler):
     @serialized
     def do_POST(self):
         parsed = urlparse(self.path)
-        if unquote(parsed.path) == "/api/stop":
-            # A newly launched copy asking this one to step aside. The server
-            # only listens on this machine, so the only thing that can ask is
-            # something already running on it.
-            self._json({"ok": True})
-            if self.httpd is not None:
-                threading.Thread(target=self.httpd.shutdown, daemon=True).start()
-            return
         try:
+            self._check_request()
+            if unquote(parsed.path) == "/api/stop":
+                self._json({"ok": True})
+                if self.httpd is not None:
+                    threading.Thread(target=self.httpd.shutdown, daemon=True).start()
+                return
             return self._api_post(unquote(parsed.path))
         except ApiError as exc:
             return self._error(exc.message, exc.status)
@@ -290,6 +337,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         parsed = urlparse(self.path)
         try:
+            self._check_request()
             return self._api_delete(unquote(parsed.path))
         except ApiError as exc:
             return self._error(exc.message, exc.status)
@@ -301,7 +349,7 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", ""):
             path = "/index.html"
         target = (WEB_ROOT / path.lstrip("/")).resolve()
-        if not str(target).startswith(str(WEB_ROOT.resolve())) or not target.is_file():
+        if not target.is_relative_to(WEB_ROOT.resolve()) or not target.is_file():
             return self._send(404, b"Not found", "text/plain")
         kind = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
         self._send(200, target.read_bytes(), kind)
@@ -424,8 +472,6 @@ class Handler(BaseHTTPRequestHandler):
         store = self.store
 
         if path == "/api/history-transfer":
-            if int(self.headers.get("Content-Length") or 0) > transfer.MAX_BYTES:
-                raise ApiError("This history file is too large.")
             try:
                 result = transfer.restore_archive(self._body(), store)
             except ValueError as exc:
@@ -702,7 +748,11 @@ class Handler(BaseHTTPRequestHandler):
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         digest = hashlib.sha256(raw).hexdigest()[:16]
         target = UPLOAD_DIR / f"{digest}-{filename}"
-        target.write_bytes(raw)
+        if not target.resolve().is_relative_to(UPLOAD_DIR.resolve()) or target.is_symlink():
+            raise ApiError("This upload destination is not safe.")
+        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+        with os.fdopen(fd, 'wb') as saved:
+            saved.write(raw)
         return target
 
     def _upload(self):
@@ -712,9 +762,8 @@ class Handler(BaseHTTPRequestHandler):
         # because Sitterwise exports a month at a time. Uploading the second
         # file joins it to the first rather than replacing it.
         combined = None
-        earlier = [Path(unquote(p)) for p in
+        earlier = [self._uploaded_path(unquote(p)) for p in
                    (self.headers.get("X-Combine-With") or "").split("|") if p.strip()]
-        earlier = [p for p in earlier if p.exists()]
         if earlier:
             result = combine.combine_exports([*earlier, target], UPLOAD_DIR)
             combined = result.to_dict()
@@ -767,9 +816,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _create_run(self, data):
         store = self.store
-        source = Path(data.get("source_path", ""))
-        if not source.exists():
-            raise ApiError("That upload has gone. Please upload the export again.")
+        source = self._uploaded_path(data.get("source_path", ""))
         try:
             start = date.fromisoformat(data["period_start"])
             end = date.fromisoformat(data["period_end"])
@@ -804,6 +851,13 @@ class Handler(BaseHTTPRequestHandler):
             data.get("source_filename") or source.name,
             result.source_sha256, str(source))
         return self._json({"ok": True, "run_id": run_id})
+
+    def _uploaded_path(self, value):
+        source = Path(value).resolve()
+        if (not source.is_relative_to(UPLOAD_DIR.resolve()) or not source.is_file()
+                or source.suffix.lower() not in (".csv", ".xlsx", ".xlsm")):
+            raise ApiError("Please choose a bookings file uploaded into this app.")
+        return source
 
     def _add_adjustment(self, run_id, data):
         self._require_open(run_id)
@@ -880,10 +934,12 @@ def build_id() -> str:
 BUILD = build_id()
 
 
-def _running_build(port: int) -> str | None:
+def _running_build(port: int, data_path: Path | None = None) -> str | None:
     """The build the app on this port is running, or None if that is not us."""
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/state", timeout=2) as resp:
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/state",
+            headers=local_headers(data_path or DATA_DIR / "payroll.sqlite3"))
+        with urllib.request.urlopen(req, timeout=2) as resp:
             if resp.status != 200:
                 return None
             return str(json.loads(resp.read().decode("utf-8")).get("build", ""))
@@ -891,7 +947,7 @@ def _running_build(port: int) -> str | None:
         return None
 
 
-def _ask_to_stop(port: int) -> bool:
+def _ask_to_stop(port: int, data_path: Path | None = None) -> bool:
     """Ask the copy already running to stop, and wait for the port to free.
 
     Double-clicking the app after pulling an update used to reach the copy
@@ -900,7 +956,8 @@ def _ask_to_stop(port: int) -> bool:
     launch now takes over from an old one.
     """
     try:
-        request = urllib.request.Request(f"http://127.0.0.1:{port}/api/stop", method="POST")
+        request = urllib.request.Request(f"http://127.0.0.1:{port}/api/stop", method="POST",
+            headers=local_headers(data_path or DATA_DIR / "payroll.sqlite3"))
         urllib.request.urlopen(request, timeout=3).read()
     except (urllib.error.URLError, OSError):
         pass                      # an older copy has no way to be asked
@@ -920,7 +977,9 @@ def _payroll_already_on(port: int) -> bool:
     not a stack trace.
     """
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/state", timeout=2) as resp:
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/state",
+            headers=local_headers(DATA_DIR / "payroll.sqlite3"))
+        with urllib.request.urlopen(req, timeout=2) as resp:
             if resp.status != 200:
                 return False
             json.loads(resp.read().decode("utf-8"))
@@ -932,7 +991,8 @@ def _payroll_already_on(port: int) -> bool:
 def _same_data_on(port: int, path: Path) -> bool:
     """A test or a newly installed app must never replace another data store."""
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/state", timeout=2) as resp:
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/state", headers=local_headers(path))
+        with urllib.request.urlopen(req, timeout=2) as resp:
             state = json.loads(resp.read().decode("utf-8"))
         saved_path = state.get("data_path")
         if saved_path:
@@ -945,8 +1005,10 @@ def _same_data_on(port: int, path: Path) -> bool:
 
 
 def serve(port: int = 8756, open_browser: bool = True, data_path: Path | None = None):
+    os.umask(0o077)
     httpd = None
     chosen_data = Path(data_path) if data_path else DATA_DIR / "payroll.sqlite3"
+    token = access_token(chosen_data)
     for candidate in range(port, port + 10):
         try:
             Handler.store = Store(data_path)
@@ -958,7 +1020,7 @@ def serve(port: int = 8756, open_browser: bool = True, data_path: Path | None = 
                 raise
             if not _same_data_on(candidate, chosen_data):
                 continue
-            running = _running_build(candidate)
+            running = _running_build(candidate, chosen_data)
             if running is None:
                 continue          # something else has the port; try the next one
             if running == BUILD and BUILD:
@@ -967,14 +1029,14 @@ def serve(port: int = 8756, open_browser: bool = True, data_path: Path | None = 
                 print(f"  It is open at {url} - no need to start it twice.")
                 print("  You can close this window.\n")
                 if open_browser:
-                    webbrowser.open(url)
+                    webbrowser.open(url + "#access=" + token)
                 return
             # A different copy of the code is answering - almost always an
             # older one still running from before an update was pulled. Opening
             # it would quietly hand back the old app, which is exactly how an
             # update could look installed and not be. Take the port instead.
             print("\n  An older copy of payroll is running. Stopping it first.")
-            if not _ask_to_stop(candidate):
+            if not _ask_to_stop(candidate, chosen_data):
                 print("  It would not stop. In Terminal, run:  pkill -f run.py")
                 print("  then start payroll again.\n")
                 return
@@ -993,12 +1055,14 @@ def serve(port: int = 8756, open_browser: bool = True, data_path: Path | None = 
         return
 
     Handler.httpd = httpd
+    httpd.access_token = token
+    httpd.timeout = 30
     url = f"http://127.0.0.1:{port}/"
     print("\n  Sitterwise Payroll is running." + (f"  (version {BUILD})" if BUILD else ""))
     print(f"  Open {url} in your browser.")
     print("  Leave this window open while you work. Close it when you are done.\n")
     if open_browser:
-        threading.Timer(0.6, lambda: webbrowser.open(url)).start()
+        threading.Timer(0.6, lambda: webbrowser.open(url + "#access=" + token)).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

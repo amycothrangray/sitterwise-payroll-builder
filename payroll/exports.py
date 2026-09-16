@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
@@ -28,9 +29,29 @@ from .settings_files import mapping_path                                  # noqa
 MAPPING_PATH = Path(__file__).resolve().parent.parent / "onpay_mapping.json"
 
 
-def _writer():
+def _report_cell(value):
+    """Keep imported text from becoming an Excel formula in human reports."""
+    if not isinstance(value, str):
+        return value
+    stripped = value.lstrip()
+    if (stripped.startswith(('=', '+', '-', '@')) or value.startswith(('\t', '\r', '\n'))):
+        if not re.fullmatch(r"[+-]?[0-9]+(?:\.[0-9]+)?", value):
+            return "'" + value
+    return value
+
+
+class _ReportWriter:
+    def __init__(self, writer):
+        self.writer = writer
+
+    def writerow(self, row):
+        return self.writer.writerow([_report_cell(value) for value in row])
+
+
+def _writer(report=True):
     buffer = io.StringIO(newline="")
-    return buffer, csv.writer(buffer, lineterminator="\n")
+    writer = csv.writer(buffer, lineterminator="\n")
+    return buffer, _ReportWriter(writer) if report else writer
 
 
 def _safe(label: str) -> str:
@@ -320,7 +341,7 @@ def _day_label(day) -> str:
 
 
 def _jobs_note(jobs) -> str:
-    """"Aug 3 Wall, Aug 5 Congdon" - the dates and families behind the hours."""
+    """"Aug 3 Family A, Aug 5 Family B" - the dates and families behind the hours."""
     seen, out = set(), []
     for job in sorted(jobs, key=lambda j: (j.workday or date.min, j.booking_id)):
         label = f"{_day_label(job.workday)} {_client_short(job.client_name)}".strip()
@@ -471,10 +492,7 @@ def onpay_pay_rows(caregiver: CaregiverPayroll, emp_num: str,
     # overtime premium rides on its own pay item.
     #
     # It cannot go on OnPay's Overtime (2) or Double Overtime (22), whatever
-    # rate we send. OnPay recomputes those itself - the register for the week
-    # of 7 September 2026 relabelled every one of them "Overtime Weighted"
-    # and paid its own number: we sent Olivia Doyle 4 hours at $34.50 and
-    # OnPay paid $48.56 an hour. Eleven people, $466.99 overpaid.
+    # rate we send. OnPay recomputes those itself and can change the payment.
     #
     # Separate Non-Hourly custom items carry the calculated premium amounts.
     for key, bucket in sorted(buckets.items(), key=lambda kv: -kv[1]["rate"]):
@@ -484,7 +502,6 @@ def onpay_pay_rows(caregiver: CaregiverPayroll, emp_num: str,
     # The premium goes in as money, not as hours at a rate. Hours on a custom
     # item land in OnPay's Regular hours column, which would count the same
     # hour twice and put a total on the wage statement that nobody worked -
-    # 37.50 for Angela Hanson, who worked 26.75.
     # OnPay requires treat_as_cash=1 for these Non-Hourly items. A cash
     # amount alone is not sufficient; that exact omission rejected the file.
     cash(ids.get("overtime_premium", 17), caregiver.ot_premium,
@@ -755,7 +772,7 @@ def onpay_import_csv(run: PayrollRun, roster: dict[str, RosterEntry],
     mapping = mapping or load_onpay_mapping()
     skip_without_id = mapping.get("skip_rows_without_identifier", True)
 
-    buffer, out = _writer()
+    buffer, out = _writer(report=False)
     if mapping.get("include_header", True):
         out.writerow(ONPAY_HEADER)
 

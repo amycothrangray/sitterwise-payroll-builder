@@ -267,8 +267,7 @@ def _check_unclosed_jobs(all_jobs: list[Job], period_start, period_end, rules: R
     A booking in the past that still says "confirmed" was never closed out in
     Sitterwise. The app will not pay it, because "confirmed" does not mean the
     job happened. But the person may well have worked, so this stops payroll
-    rather than leaving a quiet note - that is how Ketut Sudiasih nearly went
-    unpaid for 13 September 2026.
+    rather than leaving a quiet note that could be missed.
     """
     if not period_start or not period_end:
         return []
@@ -428,8 +427,7 @@ def _check_caregiver(caregiver: CaregiverPayroll, roster: dict[str, RosterEntry]
             "overtime_premium_by_hand", NOTE,
             f"{name}'s overtime premium is included in the download",
             f"{name}{blended} OnPay recalculates anything put on its Overtime or Double "
-            "Overtime pay items, whatever rate it is given. On the week of 7 September "
-            "2026 it did that to eleven people and overpaid them $466.99 between them. "
+            "Overtime pay items, whatever rate it is given. "
             "The premium is already worked out - the card shows it.",
             "The upload file handles this. If you are typing instead, put the premium on "
             "Overtime Premium as a dollar amount and leave the Overtime hours column empty.",

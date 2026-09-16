@@ -93,16 +93,16 @@ class TheEmployeeDetailExport(unittest.TestCase):
         self.assertEqual(people["tess okafor"].onpay_name, "")
 
     def test_lissa_is_recognised_on_a_second_import(self):
-        """Her roster entry says Lissa Gray; OnPay says Elisabeth R Gray."""
-        people, _ = self.read([person("Gray", "Elisabeth", "R", Type="Salary",
-                                      Rate="7400", **{"Pay Frequency": "Monthly"})])
+        """Her roster entry says Jay Rivers; OnPay says Jamie R Rivers."""
+        people, _ = self.read([person("Rivers", "Jamie", "R", Type="Salary",
+                                      Rate="7200", **{"Pay Frequency": "Monthly"})])
         changed, report = merge_import(
-            {"lissa gray": RosterEntry("lissa gray", "Lissa Gray",
-                                       onpay_name="Elisabeth R Gray")},
+            {"jay rivers": RosterEntry("jay rivers", "Jay Rivers",
+                                       onpay_name="Jamie R Rivers")},
             list(people.values()))
         self.assertEqual(report["linked"], 1)
-        self.assertEqual(changed[0].display_name, "Lissa Gray")
-        self.assertEqual(changed[0].onpay_rate, "7400")
+        self.assertEqual(changed[0].display_name, "Jay Rivers")
+        self.assertEqual(changed[0].onpay_rate, "7200")
 
     def test_the_onpay_rate_comes_across(self):
         people, _ = self.read([person("Acosta", "Danielle", Rate="23")])
@@ -117,9 +117,9 @@ class TheEmployeeDetailExport(unittest.TestCase):
         self.assertEqual(people["nia vance"].onpay_rate, "23.755")
 
     def test_a_salary_is_read_as_a_salary(self):
-        people, _ = self.read([person("Gray", "Elisabeth", "R", Type="Salary",
-                                      Rate="7400", **{"Pay Frequency": "Monthly"})])
-        entry = people["elisabeth gray"]
+        people, _ = self.read([person("Rivers", "Jamie", "R", Type="Salary",
+                                      Rate="7200", **{"Pay Frequency": "Monthly"})])
+        entry = people["jamie rivers"]
         self.assertEqual((entry.onpay_pay_type, entry.onpay_pay_frequency),
                          ("Salary", "Monthly"))
 
@@ -163,7 +163,7 @@ class PeopleWhoAreNoLongerHere(unittest.TestCase):
 
 
 class TwoPeopleWithTheSameName(unittest.TestCase):
-    """Sitterwise really does have two Maria Brants, on different rates."""
+    """Sitterwise really does have two Robin Frosts, on different rates."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -177,18 +177,18 @@ class TwoPeopleWithTheSameName(unittest.TestCase):
         return {e.caregiver_key: e for e in entries}, problems
 
     def test_neither_of_them_is_imported(self):
-        people, _ = self.read([person("Brant", "Maria", Rate="20"),
-                               person("Brant", "Maria", Rate="23")])
-        self.assertNotIn("maria brant", people)
+        people, _ = self.read([person("Frost", "Robin", Rate="20"),
+                               person("Frost", "Robin", Rate="23")])
+        self.assertNotIn("robin frost", people)
 
     def test_the_name_is_reported_rather_than_silently_dropped(self):
-        _, problems = self.read([person("Brant", "Maria", Rate="20"),
-                                 person("Brant", "Maria", Rate="23")])
-        self.assertTrue(any("Maria Brant" in p for p in problems))
+        _, problems = self.read([person("Frost", "Robin", Rate="20"),
+                                 person("Frost", "Robin", Rate="23")])
+        self.assertTrue(any("Robin Frost" in p for p in problems))
 
     def test_everybody_else_still_comes_through(self):
-        people, _ = self.read([person("Brant", "Maria", Rate="20"),
-                               person("Brant", "Maria", Rate="23"),
+        people, _ = self.read([person("Frost", "Robin", Rate="20"),
+                               person("Frost", "Robin", Rate="23"),
                                person("Okafor", "Tess")])
         self.assertIn("tess okafor", people)
 
@@ -339,15 +339,15 @@ class FoldingTheExportIntoTheRosterHere(unittest.TestCase):
 
     def test_lissa_is_matched_under_her_legal_name(self):
         changed, report = merge_import(
-            self.roster(RosterEntry("lissa gray", "Lissa Gray",
-                                    onpay_name="Elisabeth R Gray")),
-            [RosterEntry("elisabeth r gray", "Elisabeth R Gray",
-                         onpay_rate="7400", onpay_pay_type="Salary")])
+            self.roster(RosterEntry("jay rivers", "Jay Rivers",
+                                    onpay_name="Jamie R Rivers")),
+            [RosterEntry("jamie r rivers", "Jamie R Rivers",
+                         onpay_rate="7200", onpay_pay_type="Salary")])
         self.assertEqual(report["linked"], 1)
         self.assertEqual(report["in_onpay_only"], 0)
-        self.assertEqual(changed[0].display_name, "Lissa Gray")
-        self.assertEqual(changed[0].onpay_name, "Elisabeth R Gray")
-        self.assertEqual(changed[0].onpay_rate, "7400")
+        self.assertEqual(changed[0].display_name, "Jay Rivers")
+        self.assertEqual(changed[0].onpay_name, "Jamie R Rivers")
+        self.assertEqual(changed[0].onpay_rate, "7200")
 
     def test_somebody_the_export_never_mentions_is_named_back(self):
         _, report = merge_import(
@@ -370,21 +370,21 @@ class HandingOutClockUsers(unittest.TestCase):
         return {e.caregiver_key: e for e in entries}
 
     def test_everybody_without_one_gets_a_number(self):
-        roster = self.roster(RosterEntry("a", "Abigail Currie"),
+        roster = self.roster(RosterEntry("a", "Avery Sample"),
                              RosterEntry("b", "Beth Jones"))
         assign_clock_users(roster)
         self.assertEqual([roster["a"].onpay_clock_user, roster["b"].onpay_clock_user],
                          ["1001", "1002"])
 
     def test_a_number_somebody_already_has_is_left_alone(self):
-        roster = self.roster(RosterEntry("a", "Abigail Currie", onpay_clock_user="77"))
+        roster = self.roster(RosterEntry("a", "Avery Sample", onpay_clock_user="77"))
         assign_clock_users(roster)
         self.assertEqual(roster["a"].onpay_clock_user, "77")
 
     def test_a_number_in_use_is_never_given_to_a_second_person(self):
         """Two caregivers on one Clock User puts one person's hours on the
         other one's pay."""
-        roster = self.roster(RosterEntry("a", "Abigail Currie"),
+        roster = self.roster(RosterEntry("a", "Avery Sample"),
                              RosterEntry("c", "Cara Lin", onpay_clock_user="1002"),
                              RosterEntry("d", "Dana Reyes"),
                              RosterEntry("e", "Eve Marsh"))
@@ -396,7 +396,7 @@ class HandingOutClockUsers(unittest.TestCase):
                                   roster["e"].onpay_clock_user])
 
     def test_running_it_twice_changes_nothing(self):
-        roster = self.roster(RosterEntry("a", "Abigail Currie"),
+        roster = self.roster(RosterEntry("a", "Avery Sample"),
                              RosterEntry("b", "Beth Jones"))
         assign_clock_users(roster)
         before = {k: e.onpay_clock_user for k, e in roster.items()}
@@ -404,14 +404,14 @@ class HandingOutClockUsers(unittest.TestCase):
         self.assertEqual({k: e.onpay_clock_user for k, e in roster.items()}, before)
 
     def test_it_reports_only_the_people_it_changed(self):
-        roster = self.roster(RosterEntry("a", "Abigail Currie", onpay_clock_user="1001"),
+        roster = self.roster(RosterEntry("a", "Avery Sample", onpay_clock_user="1001"),
                              RosterEntry("b", "Beth Jones"))
         self.assertEqual([e.display_name for e in assign_clock_users(roster)],
                          ["Beth Jones"])
 
     def test_the_numbers_follow_the_order_the_roster_is_shown_in(self):
         roster = self.roster(RosterEntry("z", "Zara Quinn"),
-                             RosterEntry("a", "Abigail Currie"))
+                             RosterEntry("a", "Avery Sample"))
         assign_clock_users(roster)
         self.assertLess(int(roster["a"].onpay_clock_user),
                         int(roster["z"].onpay_clock_user))
@@ -432,7 +432,7 @@ class CheckingWhatWasTypedIntoOnPay(unittest.TestCase):
 
     def setUp(self):
         self.roster = {
-            "a": RosterEntry("a", "Abigail Currie", onpay_clock_user="1001"),
+            "a": RosterEntry("a", "Avery Sample", onpay_clock_user="1001"),
             "b": RosterEntry("b", "Beth Jones", onpay_clock_user="1002"),
             "c": RosterEntry("c", "Cara Lin", onpay_clock_user="1003"),
         }
@@ -442,7 +442,7 @@ class CheckingWhatWasTypedIntoOnPay(unittest.TestCase):
 
     def test_everything_matching_is_reported_as_matching(self):
         report = compare_clock_users(self.roster, self.read_back(
-            ("Abigail Currie", "1001"), ("Beth Jones", "1002"), ("Cara Lin", "1003")))
+            ("Avery Sample", "1001"), ("Beth Jones", "1002"), ("Cara Lin", "1003")))
         self.assertEqual(len(report["agree"]), 3)
         self.assertEqual(report["wrong"], [])
         self.assertEqual(report["missing"], [])
@@ -460,7 +460,7 @@ class CheckingWhatWasTypedIntoOnPay(unittest.TestCase):
         self.assertIn("nobody", wrong["why"])
 
     def test_somebody_left_out_of_the_readback_is_named(self):
-        report = compare_clock_users(self.roster, self.read_back(("Abigail Currie", "1001")))
+        report = compare_clock_users(self.roster, self.read_back(("Avery Sample", "1001")))
         self.assertEqual([m["name"] for m in report["missing"]],
                          ["Beth Jones", "Cara Lin"])
 
@@ -469,9 +469,9 @@ class CheckingWhatWasTypedIntoOnPay(unittest.TestCase):
         self.assertEqual(report["unknown"][0]["name"], "Zara Quinn")
 
     def test_it_matches_somebody_under_their_onpay_name(self):
-        roster = {"lissa": RosterEntry("lissa", "Lissa Gray", onpay_clock_user="1001",
-                                       onpay_name="Elisabeth R Gray")}
-        report = compare_clock_users(roster, self.read_back(("Elisabeth R Gray", "1001")))
+        roster = {"lissa": RosterEntry("lissa", "Jay Rivers", onpay_clock_user="1001",
+                                       onpay_name="Jamie R Rivers")}
+        report = compare_clock_users(roster, self.read_back(("Jamie R Rivers", "1001")))
         self.assertEqual(len(report["agree"]), 1)
         self.assertEqual(report["unknown"], [])
 

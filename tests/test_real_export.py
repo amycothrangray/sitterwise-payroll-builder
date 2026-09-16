@@ -10,6 +10,7 @@ moves a real payroll total, that should be a decision, not a surprise.
 from __future__ import annotations
 
 import os
+import json
 import sys
 import unittest
 from datetime import date
@@ -121,33 +122,12 @@ class TestRealExport(unittest.TestCase):
         self.assertEqual(crossed, [])
 
     def test_the_totals_have_not_moved(self):
-        # Checked by hand against the August 2026 export, Mon 10 - Sun 16 Aug:
-        #   283.75 hrs at $23 = $6,526.25
-        #    37.00 hrs at $28 = $1,036.00
-        #     1.00 guarantee hr =   $23.00
-        #    14.75 overtime hrs =  $182.06 premium
-        #   tips $145.00, bonuses $60.00
-        #   108 miles = $82.08, other reimbursements $114.00
+        # Real amounts are private inputs, never public test fixtures.
+        baseline = REAL_DIR / "expected-totals.json"
+        if not baseline.exists():
+            self.skipTest("No private expected-totals.json baseline is available")
         totals = self.payroll.totals()
-        expected = {
-            "hours_worked": "320.75",
-            "straight_pay": "7562.25",
-            "guarantee_hours": "1.00",
-            "guarantee_pay": "23.00",
-            "ot_hours": "14.75",
-            "ot_premium": "182.06",
-            "dt_hours": "0.00",
-            "tips": "145.00",
-            "bonus": "60.00",
-            # Read as round trips now, not as payable miles: two claims in the
-            # week, each 40 miles longer than the payable figure.
-            "mileage_miles": "188",
-            "mileage_amount": "82.08",
-            "other_reimbursement": "114.00",
-            "taxable_earnings": "7972.31",
-            "reimbursements": "196.08",
-            "total_paid": "8168.39",
-        }
+        expected = json.loads(baseline.read_text())
         for key, value in expected.items():
             self.assertEqual(Decimal(totals[key]), Decimal(value), key)
 
