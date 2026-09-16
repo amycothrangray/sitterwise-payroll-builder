@@ -2,6 +2,8 @@
 # Double-click this to run Sitterwise Payroll.
 # It opens in your browser. Everything stays on this computer.
 
+umask 077
+
 cd "$(dirname "$0")" || exit 1
 
 PY=""
@@ -18,11 +20,11 @@ if [ -z "$PY" ]; then
   exit 1
 fi
 
-if ! "$PY" -c "import openpyxl" >/dev/null 2>&1; then
+if ! "$PY" -c "import openpyxl, defusedxml" >/dev/null 2>&1; then
   echo ""
   echo "  Setting things up for the first time. This takes a moment..."
-  "$PY" -m pip install --quiet --user openpyxl || {
-    echo "  Could not install what the app needs. Try: python3 -m pip install openpyxl"
+  "$PY" -m pip install --quiet --user -r requirements.txt || {
+    echo "  Could not install what the app needs. Try: python3 -m pip install -r requirements.txt"
     read -r -p "  Press return to close. " _
     exit 1
   }

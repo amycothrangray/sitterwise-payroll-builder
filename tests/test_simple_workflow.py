@@ -108,6 +108,7 @@ class ReuploadingAWeek(unittest.TestCase):
             store.create_run('Duplicate', START, END, Rules.load().snapshot(),
                              FIXTURE.name, result.source_sha256, str(FIXTURE))
             handler = Mock(store=store)
+            handler._uploaded_path.side_effect = lambda value: Path(value)
             handler._json.side_effect = lambda data: data
             answer = Handler._create_run(handler, dict(source_path=str(FIXTURE),
                                         period_start=START.isoformat(), period_end=END.isoformat()))

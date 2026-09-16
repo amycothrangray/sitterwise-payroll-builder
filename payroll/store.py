@@ -10,6 +10,7 @@ adjustments layered on top, so the original export can always be seen.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import uuid
 from datetime import date, datetime, timezone
@@ -137,8 +138,16 @@ def now() -> str:
 class Store:
     def __init__(self, path: Path | str | None = None):
         self.path = Path(path) if path else DATA_DIR / "payroll.sqlite3"
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if self.path.parent.resolve() == DATA_DIR.resolve():
+            os.chmod(self.path.parent, 0o700)
+        if self.path.is_symlink():
+            raise ValueError("The payroll database cannot be a symbolic link.")
+        fd = os.open(self.path, os.O_CREAT | os.O_RDWR | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+        os.fchmod(fd, 0o600)
+        os.close(fd)
         self.db = sqlite3.connect(self.path, check_same_thread=False)
+        self.db.execute("PRAGMA trusted_schema=OFF")
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
         self._add_missing_columns()

@@ -9,6 +9,45 @@ const S = { view: 'home', runId: null, run: null, home: null, roster: null,
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Encode the JavaScript string, then its enclosing HTML attribute.
+const jsArg = v => esc(JSON.stringify(String(v ?? '')));
+const accessMatch = location.hash.match(/^#access=([A-Za-z0-9_-]{43})$/);
+if (accessMatch) {
+  sessionStorage.setItem('payroll-access', accessMatch[1]);
+  history.replaceState(null, '', location.pathname + location.search + '#/home');
+}
+async function authenticatedFetch(path, options = {}) {
+  const url = new URL(path, location.href);
+  if (url.origin !== location.origin || !url.pathname.startsWith('/api/')) {
+    throw new Error('Payroll requests must stay in this app.');
+  }
+  const headers = new Headers(options.headers || {});
+  headers.set('Authorization', 'Bearer ' + (sessionStorage.getItem('payroll-access') || ''));
+  return fetch(url, { ...options, headers, credentials: 'omit', redirect: 'error' });
+}
+// Downloads need the same local key as API calls; a plain link cannot attach it.
+document.addEventListener('click', async event => {
+  const link = event.target.closest('a[href]');
+  if (event.defaultPrevented || !link) return;
+  const url = new URL(link.href, location.href);
+  if (url.origin !== location.origin || !url.pathname.startsWith('/api/')) return;
+  event.preventDefault();
+  try {
+    const response = await authenticatedFetch(url.href);
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'The download could not be created.');
+    }
+    const file = URL.createObjectURL(await response.blob());
+    const anchor = document.createElement('a');
+    anchor.href = file;
+    anchor.download = (response.headers.get('Content-Disposition') || '').match(/filename="([^"\r\n]+)"/)?.[1] || 'payroll-download';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(file), 60000);
+  } catch (error) { toast(error.message, true); }
+});
 const num = (v) => Number(v ?? 0);
 const money = (v) => '$' + num(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const hrs = (v) => num(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -23,7 +62,7 @@ function toast(message, bad) {
 }
 
 async function api(path, options = {}) {
-  const res = await fetch(path, options);
+  const res = await authenticatedFetch(path, options);
   const isJson = (res.headers.get('content-type') || '').includes('json');
   const body = isJson ? await res.json() : null;
   if (!res.ok) throw new Error((body && body.error) || `Something went wrong (${res.status})`);
@@ -55,7 +94,7 @@ window.addEventListener('hashchange', route);
 async function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   S.view = parts[0] || 'home';
-  if (parts[1]) S.runId = parts[1];
+  if (parts[1]) S.runId = /^[0-9a-f]{12}$/.test(parts[1]) ? parts[1] : null;
   await render();
 }
 
@@ -207,7 +246,7 @@ function confirmHistoricalDownload() {
 }
 async function copyNotesTask(button) {
   try {
-    const res = await fetch(`/api/runs/${S.runId}/export/onpay_notes`);
+    const res = await authenticatedFetch(`/api/runs/${S.runId}/export/onpay_notes`);
     if (!res.ok) throw new Error('Could not load the notes. Please try again.');
     const text = (await res.text()).replace(/^\uFEFF/, '');
     try { await navigator.clipboard.writeText(text); toast('Copied. Paste into ChatGPT Work.'); }
@@ -257,7 +296,7 @@ VIEWS.home = () => {
 };
 
 const runRow = (r) => `
-  <button class="runrow" onclick="openRun('${r.id}')">
+  <button class="runrow" onclick="openRun(${jsArg(r.id)})">
     <div>
       <div class="rl">${esc(r.label)}</div>
       <div class="faint">${esc(r.source_filename || '')}</div>
@@ -367,7 +406,7 @@ function periodButtons(choices, heading) {
       <div class="faint" style="margin-bottom:6px">${esc(heading)}</div>
       <div class="row">
         ${choices.map(c => `
-          <button class="btn" onclick="pickPeriod('${c.start}','${c.end}')">
+          <button class="btn" onclick="pickPeriod(${jsArg(c.start)},${jsArg(c.end)})">
             ${esc(c.label)} <span class="faint">· ${plural(c.jobs, 'job', 'jobs')}</span>
           </button>`).join('')}
       </div>
@@ -462,7 +501,7 @@ VIEWS.check = () => {
 };
 
 const findingCard = (f) => `
-  <button class="finding ${f.level}" onclick="openFinding('${esc(f.caregiver_key)}')">
+  <button class="finding ${esc(f.level)}" onclick="openFinding(${jsArg(f.caregiver_key)})">
     <div class="ftitle">${esc(f.title)}</div>
     <div class="fdetail">${esc(f.detail)}</div>
     ${f.what_to_do ? `<div class="fdo">${esc(f.what_to_do)}</div>` : ''}
@@ -525,7 +564,7 @@ function caregiverCard(c) {
   return `
   <div class="card cgcard">
     <button class="cghead" onclick="toggleCard(this)" aria-expanded="${open}">
-      <span class="pill ${c.status === 'needs_review' ? 'review' : c.status}">
+      <span class="pill ${c.status === 'needs_review' ? 'review' : esc(c.status)}">
         ${c.status === 'ready' ? 'Ready' : c.status === 'needs_review' ? 'Needs a look' : "Can't pay yet"}
       </span>
       <span class="name">${esc(c.name || '(no name)')}</span>
@@ -680,9 +719,9 @@ function adjustmentBlock(c) {
         <span>${esc(a.kind)}${a.booking_id ? ` on booking ${esc(a.booking_id)}` : ''}:
           <s class="muted">${esc(a.original_value)}</s> → <strong>${esc(a.new_value)}</strong></span>
         <span class="faint">${esc(a.reason)} · ${esc((a.created_at || '').slice(0, 16).replace('T', ' '))}</span>
-        ${locked ? '' : `<button class="btn btn-sm btn-ghost" onclick="removeAdjustment('${a.id}')">Undo</button>`}
+        ${locked ? '' : `<button class="btn btn-sm btn-ghost" onclick="removeAdjustment(${jsArg(a.id)})">Undo</button>`}
       </div>`).join('')}
-    ${locked ? '' : `<button class="btn btn-sm" onclick="openAdjust('${esc(c.key)}')">Correct something</button>`}
+    ${locked ? '' : `<button class="btn btn-sm" onclick="openAdjust(${jsArg(c.key)})">Correct something</button>`}
   </div>`;
 }
 
@@ -721,7 +760,7 @@ function openAdjust(key) {
       <input type="text" id="adjreason" placeholder="e.g. Family confirmed a $40 cash tip"></label>
     <div class="row" style="justify-content:flex-end;margin-top:6px">
       <button class="btn btn-ghost" onclick="this.closest('.modalbg').remove()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveAdjust('${esc(key)}')">Save the change</button>
+      <button class="btn btn-primary" onclick="saveAdjust(${jsArg(key)})">Save the change</button>
     </div>
   </div>`;
   document.body.appendChild(box);
@@ -797,7 +836,7 @@ VIEWS.onpay = () => {
     </tr></thead><tbody>
     ${caregivers.map(c => `<tr>
       <td><input type="checkbox" ${c.entered ? 'checked' : ''} ${S.run.run.locked ? 'disabled' : ''}
-           onchange="markEntered('${esc(c.key)}', this.checked)"></td>
+           onchange="markEntered(${jsArg(c.key)}, this.checked)"></td>
       <td><strong>${esc(c.name)}</strong>
         ${c.status === 'blocked' ? '<span class="pill blocked">Can\'t pay yet</span>' : ''}
         ${c.adjustments.length ? '<span class="pill manual">Adjusted</span>' : ''}</td>
@@ -905,8 +944,7 @@ VIEWS.entry = () => {
               + ' · ' : ''}${money(l.amount)}</span>
           </div>
           <div class="payline-note">${l.note ? esc(l.note) : '<span class="faint">no note</span>'}</div>
-          ${l.note ? `<button class="btn btn-sm" onclick="copy(${JSON.stringify(l.note)
-            .replace(/"/g, '&quot;')}, this)">Copy</button>` : '<span></span>'}
+          ${l.note ? `<button class="btn btn-sm" onclick="copy(${jsArg(l.note)}, this)">Copy</button>` : '<span></span>'}
         </div>`).join('')}
     </div>` : ''}
 
@@ -918,7 +956,7 @@ VIEWS.entry = () => {
     <div class="row" style="margin-top:18px">
       <button class="btn" onclick="entryMove(-1)" ${S.entryIndex === 0 ? 'disabled' : ''}>← Previous</button>
       <button class="btn btn-primary btn-huge" style="flex:1"
-        onclick="entryDone('${esc(c.key)}')" ${S.run.run.locked ? 'disabled' : ''}>
+        onclick="entryDone(${jsArg(c.key)})" ${S.run.run.locked ? 'disabled' : ''}>
         ${c.entered ? 'Next caregiver →' : '✓ Mark entered in OnPay'}
       </button>
       <button class="btn" onclick="entryMove(1)"
@@ -934,7 +972,7 @@ const bigNum = (key, value, present) => `
   <div class="bignum">
     <div class="k">${esc(key)}</div>
     <div class="v ${present ? '' : 'none'}">${present ? esc(value) : '—'}</div>
-    ${present ? `<button class="btn btn-sm copy" onclick="copy('${esc(value)}', this)">Copy</button>` : ''}
+    ${present ? `<button class="btn btn-sm copy" onclick="copy(${jsArg(value)}, this)">Copy</button>` : ''}
   </div>`;
 
 function entryMove(step) { S.entryIndex += step; render(); }
@@ -1163,19 +1201,19 @@ VIEWS.roster = () => {
       <th>Employee ID</th><th>Name in OnPay</th><th>OnPay pays</th><th>Note</th><th></th></tr></thead><tbody>
     ${list.map(e => `<tr>
       <td><strong>${esc(e.display_name)}</strong></td>
-      <td><select onchange="saveRoster('${esc(e.caregiver_key)}', this)" data-f="status">
+      <td><select onchange="saveRoster(${jsArg(e.caregiver_key)}, this)" data-f="status">
         ${statuses.map(s => `<option value="${s.key}" ${s.key === e.status ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}
       </select></td>
       <td><input type="text" value="${esc(e.onpay_clock_user)}" data-f="onpay_clock_user"
-           onchange="saveRoster('${esc(e.caregiver_key)}', this)" style="min-width:130px"></td>
+           onchange="saveRoster(${jsArg(e.caregiver_key)}, this)" style="min-width:130px"></td>
       <td><input type="text" value="${esc(e.onpay_employee_id)}" data-f="onpay_employee_id"
-           onchange="saveRoster('${esc(e.caregiver_key)}', this)" style="min-width:110px"></td>
+           onchange="saveRoster(${jsArg(e.caregiver_key)}, this)" style="min-width:110px"></td>
       <td><input type="text" value="${esc(e.onpay_name || '')}" data-f="onpay_name"
            placeholder="only if different"
-           onchange="saveRoster('${esc(e.caregiver_key)}', this)" style="min-width:150px"></td>
+           onchange="saveRoster(${jsArg(e.caregiver_key)}, this)" style="min-width:150px"></td>
       <td class="faint">${esc(onpayPay(e))}</td>
       <td><input type="text" value="${esc(e.note)}" data-f="note"
-           onchange="saveRoster('${esc(e.caregiver_key)}', this)" style="min-width:170px"></td>
+           onchange="saveRoster(${jsArg(e.caregiver_key)}, this)" style="min-width:170px"></td>
       <td class="faint">${esc((e.updated_at || '').slice(0, 10))}</td>
     </tr>`).join('')}
     </tbody></table>
@@ -1235,8 +1273,7 @@ async function assignClockUsers() {
         Type each into OnPay under Job → Employment → Clock User.</div>
       <div class="payline" style="align-items:flex-start">
         <pre class="payline-note" style="white-space:pre-wrap;margin:0">${esc(list)}</pre>
-        <button class="btn btn-sm" onclick="copy(${JSON.stringify(list)
-          .replace(/"/g, '&quot;')}, this)">Copy</button>
+        <button class="btn btn-sm" onclick="copy(${jsArg(list)}, this)">Copy</button>
       </div>`;
   } catch (e) { toast(e.message, true); }
 }
@@ -1297,8 +1334,7 @@ async function clockUsersFromSitterwise() {
         </tbody></table></div>
       <div class="payline" style="align-items:flex-start;margin-top:10px">
         <pre class="payline-note" style="white-space:pre-wrap;margin:0">${esc(rows)}</pre>
-        <button class="btn btn-sm" onclick="copy(${JSON.stringify(rows)
-          .replace(/"/g, '&quot;')}, this)">Copy</button>
+        <button class="btn btn-sm" onclick="copy(${jsArg(rows)}, this)">Copy</button>
       </div>` : ''}
       ${res.no_id.length ? `<div class="banner warn">
         No Sitterwise number on this payroll's bookings for:
@@ -1393,8 +1429,7 @@ async function readCalSavers(input) {
         </tbody></table></div>
       <div class="payline" style="align-items:flex-start;margin-top:10px">
         <pre class="payline-note" style="white-space:pre-wrap;margin:0">${esc(rows)}</pre>
-        <button class="btn btn-sm" onclick="copy(${JSON.stringify(rows)
-          .replace(/"/g, '&quot;')}, this)">Copy</button>
+        <button class="btn btn-sm" onclick="copy(${jsArg(rows)}, this)">Copy</button>
       </div>
       <p class="muted" style="margin:10px 0 0">Enter these in the CalSavers portal against
         the pay date above. Only what was withheld from each caregiver — CalSavers does not
@@ -1418,7 +1453,7 @@ VIEWS.history = () => {
   </div>
   ${runs.length ? `<div class="card" style="padding:0">${runs.map(r => `
     <div class="runstrip">
-      <button class="runrow" onclick="openRun('${r.id}')">
+      <button class="runrow" onclick="openRun(${jsArg(r.id)})">
         <div>
           <div class="rl">${esc(r.label)}</div>
           <div class="faint">${esc(r.source_filename || '')} ·
@@ -1429,7 +1464,7 @@ VIEWS.history = () => {
           ${r.status === 'finalized' ? 'Locked' : 'In progress'}</span>
       </button>
       ${r.status === 'finalized' ? '' : `<button class="btn btn-sm btn-ghost runbin"
-        onclick="deleteRun('${r.id}', ${JSON.stringify(r.label).replace(/"/g, '&quot;')})">Remove</button>`}
+        onclick="deleteRun(${jsArg(r.id)}, ${jsArg(r.label)})">Remove</button>`}
     </div>`).join('')}</div>` : `<div class="empty">No payrolls yet.</div>`}
 
   <h2 style="margin-top:30px">Everything that's been changed by hand</h2>
@@ -1479,9 +1514,9 @@ VIEWS.settings = () => {
     <h2>Pay rates</h2>
     ${(rules.pay_rates.tiers || []).map((t, i) => `
       <label class="field"><span>${esc(t.label)}</span>
-        <input type="number" step="0.01" value="${t.rate}" data-tier="${i}"></label>`).join('')}
+        <input type="number" step="0.01" value="${esc(t.rate)}" data-tier="${i}"></label>`).join('')}
     <label class="field"><span>Minimum hours paid per booking</span>
-      <input type="number" step="0.25" id="minhours" value="${rules.minimum_booking.minimum_hours}"></label>
+      <input type="number" step="0.25" id="minhours" value="${esc(rules.minimum_booking.minimum_hours)}"></label>
   </div>
 
   ${recurringSection()}
@@ -1505,9 +1540,9 @@ VIEWS.settings = () => {
       Time and a half over 8 hours in a day, double time over 12, and seventh-consecutive-day
       rules. Everything here is a setting, so it can be changed later without rebuilding anything.</div>
     <label class="field"><span>Overtime after this many hours in a day</span>
-      <input type="number" step="0.5" id="dailyot" value="${ot.daily_overtime.threshold_hours}"></label>
+      <input type="number" step="0.5" id="dailyot" value="${esc(ot.daily_overtime.threshold_hours)}"></label>
     <label class="field"><span>Double time after this many hours in a day</span>
-      <input type="number" step="0.5" id="dailydt" value="${ot.daily_double_time.threshold_hours}"></label>
+      <input type="number" step="0.5" id="dailydt" value="${esc(ot.daily_double_time.threshold_hours)}"></label>
     <label class="field"><span>Pay double time at all?</span>
       <select id="dtenabled">
         <option value="1" ${ot.daily_double_time.enabled ? 'selected' : ''}>Yes</option>
@@ -1518,7 +1553,7 @@ VIEWS.settings = () => {
         <option value="0" ${!ot.weekly_overtime.enabled ? 'selected' : ''}>No — daily overtime only</option>
       </select></label>
     <label class="field"><span>Weekly overtime after this many hours</span>
-      <input type="number" step="1" id="weeklyot" value="${ot.weekly_overtime.threshold_hours}"></label>
+      <input type="number" step="1" id="weeklyot" value="${esc(ot.weekly_overtime.threshold_hours)}"></label>
     <label class="field"><span>The work week starts on</span>
       <select id="wwstart">
         ${['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].map(d =>
@@ -1537,7 +1572,7 @@ VIEWS.settings = () => {
       one number. The app uses whichever was in force on the day of the job.</p>
     <div class="tablewrap"><table><thead><tr><th>From</th><th class="n">Per mile</th><th>Where it's from</th></tr></thead>
       <tbody>${rules.reimbursements.mileage.rates_by_effective_date.map(r =>
-        `<tr><td>${esc(r.effective)}</td><td class="n">$${r.rate}</td><td>${esc(r.source || '')}</td></tr>`).join('')}
+        `<tr><td>${esc(r.effective)}</td><td class="n">$${esc(r.rate)}</td><td>${esc(r.source || '')}</td></tr>`).join('')}
       </tbody></table></div>
   </div>
 
@@ -1713,9 +1748,9 @@ const noteRow = (n) => `
     </div>
     <div class="noteactions">
       ${n.status === 'open'
-        ? `<button class="btn btn-sm" onclick="markNoteDone('${n.id}')">Mark done</button>`
-        : `<button class="btn btn-sm" onclick="reopenNote('${n.id}')">Reopen</button>`}
-      <button class="btn btn-sm btn-ghost" onclick="deleteNote('${n.id}')">Delete</button>
+        ? `<button class="btn btn-sm" onclick="markNoteDone(${jsArg(n.id)})">Mark done</button>`
+        : `<button class="btn btn-sm" onclick="reopenNote(${jsArg(n.id)})">Reopen</button>`}
+      <button class="btn btn-sm btn-ghost" onclick="deleteNote(${jsArg(n.id)})">Delete</button>
     </div>
   </div>`;
 
@@ -1802,24 +1837,24 @@ function recurringSection() {
       ${entries.map(e => `<tr>
         <td><strong>${esc(e.person_name)}</strong></td>
         <td><input type="text" value="${esc(e.amount)}" data-r="amount" style="width:90px"
-             onchange="saveRecurring('${e.id}', this)"></td>
-        <td><select data-r="frequency" onchange="saveRecurring('${e.id}', this)">
+             onchange="saveRecurring(${jsArg(e.id)}, this)"></td>
+        <td><select data-r="frequency" onchange="saveRecurring(${jsArg(e.id)}, this)">
           <option value="monthly" ${e.frequency === 'monthly' ? 'selected' : ''}>Monthly — first Monday</option>
           <option value="weekly" ${e.frequency === 'weekly' ? 'selected' : ''}>Every payroll</option>
           <option value="one_off" ${e.frequency === 'one_off' ? 'selected' : ''}>Paused</option>
         </select></td>
         <td><input type="checkbox" data-r="taxable" ${Number(e.taxable) ? 'checked' : ''}
-             onchange="saveRecurring('${e.id}', this)"></td>
+             onchange="saveRecurring(${jsArg(e.id)}, this)"></td>
         <td><input type="checkbox" data-r="active" ${Number(e.active) ? 'checked' : ''}
-             onchange="saveRecurring('${e.id}', this)"></td>
+             onchange="saveRecurring(${jsArg(e.id)}, this)"></td>
         <td><input type="date" value="${esc(e.starts_on || '')}" data-r="starts_on"
-             aria-label="Start date" onchange="saveRecurring('${e.id}', this)"></td>
+             aria-label="Start date" onchange="saveRecurring(${jsArg(e.id)}, this)"></td>
         <td><input type="text" value="${esc(e.first_amount || '')}" data-r="first_amount"
              aria-label="First-period amount" placeholder="Same amount" inputmode="decimal"
-             style="width:110px" onchange="saveRecurring('${e.id}', this)"></td>
+             style="width:110px" onchange="saveRecurring(${jsArg(e.id)}, this)"></td>
         <td><input type="text" value="${esc(e.note || '')}" data-r="note" style="min-width:150px"
-             onchange="saveRecurring('${e.id}', this)"></td>
-        <td><button class="btn btn-sm btn-ghost" onclick="deleteRecurring('${e.id}')">Remove</button></td>
+             onchange="saveRecurring(${jsArg(e.id)}, this)"></td>
+        <td><button class="btn btn-sm btn-ghost" onclick="deleteRecurring(${jsArg(e.id)})">Remove</button></td>
       </tr>`).join('')}
       </tbody></table>
     </div>` : '<p class="muted">Nobody set up yet.</p>'}

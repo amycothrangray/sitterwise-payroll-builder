@@ -185,8 +185,7 @@ Rather than keeping the same information in two places, export your employee
 list out of OnPay and import it on the Roster screen.
 
 **When OnPay knows somebody by another name.** OnPay holds people under their
-legal name, which is often not the name Sitterwise shows — Lissa's OnPay
-record is Elisabeth R Gray, and married names, preferred names and middle
+legal name, which is often not the name Sitterwise shows — married names, preferred names and middle
 initials all do the same thing. The roster keeps a **Name in OnPay** for these,
 and the import matches on Clock User, employee id, or a legal name already
 recorded, before it falls back to the name. Without that, importing OnPay's
@@ -250,7 +249,7 @@ text — so the app works out the wording instead and it gets typed in.
 Each pay line gets the note that belongs beside it:
 
 ```
-Regular        8.00h @ $23.00   Aug 3 Wall, Aug 5 Congdon
+Regular        8.00h @ $23.00   Aug 3 Family A, Aug 5 Family B
 Overtime Premium      $11.50   1.00 hrs x $11.50 premium (Aug 5)
 Reimbursement          $76.00   Aug 6 mileage 100 mi paid
 ```

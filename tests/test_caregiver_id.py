@@ -6,8 +6,8 @@ so it is the number OnPay knows them by too. A caregiver is then one number
 in both systems, and somebody starting next week needs no payroll setup at
 all.
 
-It also settles identity. Matching people by name is what made two Maria
-Brants dangerous; two numbers under one name is now a stop, not a guess.
+It also settles identity. Matching people by name is what made two Robin
+Frosts dangerous; two numbers under one name is now a stop, not a guess.
 
 Run them with:  python3 -m unittest discover -s tests -v
 """
@@ -43,11 +43,11 @@ def _empty(annotation):
     return ""
 
 
-def booking(caregiver_id, day, name="Maria Brant", hours=6):
+def booking(caregiver_id, day, name="Robin Frost", hours=6):
     kw = {n: _empty(p.annotation) for n, p in FIELDS.items()
           if n != "self" and p.default is inspect.Parameter.empty}
     kw.update(booking_id=f"b{day}", caregiver_name=name, caregiver_id=caregiver_id,
-              client_name="Cameron", status="completed",
+              client_name="Example family", status="completed",
               start=datetime(2026, 9, day, 9), end=datetime(2026, 9, day, 9 + hours),
               hours_worked=Decimal(hours))
     job = Job(**kw)
@@ -58,7 +58,7 @@ def booking(caregiver_id, day, name="Maria Brant", hours=6):
 
 
 def payroll_for(*jobs):
-    return calculate_caregiver("Maria Brant", "maria brant", list(jobs), Rules.load())
+    return calculate_caregiver("Robin Frost", "robin frost", list(jobs), Rules.load())
 
 
 class TheNumberComesOffTheBookings(unittest.TestCase):
@@ -107,15 +107,15 @@ class MovingTheRosterOntoTheSitterwiseNumber(unittest.TestCase):
         return {e.caregiver_key: e for e in entries}
 
     def test_a_caregiver_with_no_number_gets_theirs(self):
-        roster = self.roster(RosterEntry("a", "Abigail Currie"))
+        roster = self.roster(RosterEntry("a", "Avery Sample"))
         report = clock_users_from_sitterwise(roster, {"a": "53"})
         self.assertEqual(roster["a"].onpay_clock_user, "53")
-        self.assertEqual([r["name"] for r in report["setting"]], ["Abigail Currie"])
+        self.assertEqual([r["name"] for r in report["setting"]], ["Avery Sample"])
 
     def test_a_number_that_changes_is_reported_because_onpay_must_follow(self):
-        roster = self.roster(RosterEntry("a", "Abigail Currie", onpay_clock_user="1001"))
+        roster = self.roster(RosterEntry("a", "Avery Sample", onpay_clock_user="1001"))
         report = clock_users_from_sitterwise(roster, {"a": "53"})
-        self.assertEqual(report["changing"], [{"name": "Abigail Currie",
+        self.assertEqual(report["changing"], [{"name": "Avery Sample",
                                                "was": "1001", "now": "53"}])
 
     def test_a_number_already_right_is_left_alone(self):
@@ -132,11 +132,11 @@ class MovingTheRosterOntoTheSitterwiseNumber(unittest.TestCase):
         self.assertEqual(report["no_id"], ["Eve Marsh"])
 
     def test_the_numbers_it_hands_back_are_the_ones_to_retype(self):
-        roster = self.roster(RosterEntry("a", "Abigail Currie", onpay_clock_user="1001"),
+        roster = self.roster(RosterEntry("a", "Avery Sample", onpay_clock_user="1001"),
                              RosterEntry("d", "Dana Reyes"))
         report = clock_users_from_sitterwise(roster, {"a": "53", "d": "149"})
         retype = {r["name"]: r["now"] for r in report["setting"] + report["changing"]}
-        self.assertEqual(retype, {"Abigail Currie": "53", "Dana Reyes": "149"})
+        self.assertEqual(retype, {"Avery Sample": "53", "Dana Reyes": "149"})
 
 
 if __name__ == "__main__":
@@ -159,13 +159,13 @@ class ConfirmingSomebodyIsSetUpInOnPay(unittest.TestCase):
                            note="Added automatically - confirm their OnPay setup")
 
     def test_it_confirms_the_ones_the_app_added_itself(self):
-        roster = {"a": self.auto("a", "Abigail Currie")}
+        roster = {"a": self.auto("a", "Avery Sample")}
         changed = self.confirm(roster, ["a"])
-        self.assertEqual([e.display_name for e in changed], ["Abigail Currie"])
+        self.assertEqual([e.display_name for e in changed], ["Avery Sample"])
         self.assertEqual(roster["a"].status, self.READY)
 
     def test_the_apps_own_placeholder_note_goes_with_it(self):
-        roster = {"a": self.auto("a", "Abigail Currie")}
+        roster = {"a": self.auto("a", "Avery Sample")}
         self.confirm(roster, ["a"])
         self.assertEqual(roster["a"].note, "")
 
@@ -173,7 +173,7 @@ class ConfirmingSomebodyIsSetUpInOnPay(unittest.TestCase):
         """Importing OnPay's employee list leaves people at "setup
         incomplete" - that export carries no Clock User, so it confirms
         nobody. Skipping them left almost the whole roster stuck."""
-        roster = {"b": RosterEntry("b", "Angela Hanson", status=self.SETUP_INCOMPLETE,
+        roster = {"b": RosterEntry("b", "Jordan Example", status=self.SETUP_INCOMPLETE,
                                    source="onpay_import")}
         self.confirm(roster, ["b"])
         self.assertEqual(roster["b"].status, self.READY)
@@ -202,11 +202,11 @@ class ConfirmingSomebodyIsSetUpInOnPay(unittest.TestCase):
         self.assertEqual(roster["j"].status, NOT_IN_ONPAY)
 
     def test_only_the_caregivers_asked_about_are_touched(self):
-        roster = {"a": self.auto("a", "Abigail Currie"), "z": self.auto("z", "Zara Quinn")}
+        roster = {"a": self.auto("a", "Avery Sample"), "z": self.auto("z", "Zara Quinn")}
         self.confirm(roster, ["a"])
         self.assertEqual(roster["z"].status, self.SETUP_INCOMPLETE)
 
     def test_confirming_twice_changes_nothing_the_second_time(self):
-        roster = {"a": self.auto("a", "Abigail Currie")}
+        roster = {"a": self.auto("a", "Avery Sample")}
         self.confirm(roster, ["a"])
         self.assertEqual(self.confirm(roster, ["a"]), [])

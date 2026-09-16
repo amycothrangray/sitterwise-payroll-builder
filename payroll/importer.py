@@ -117,6 +117,8 @@ def _parse_datetime(day, clock) -> datetime | None:
 def read_workbook(path: Path | str) -> tuple[list[str], list[dict], str]:
     """Return (header, rows-as-dicts, sha256) from an .xlsx or .csv export."""
     path = Path(path)
+    from .security import checked_workbook
+    checked_workbook(path)
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     if path.suffix.lower() == ".csv":
         import csv

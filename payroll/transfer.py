@@ -82,7 +82,8 @@ def _unpack_checked(raw: bytes, folder: Path) -> dict:
                 path = PurePosixPath(name)
                 allowed = name in {"manifest.json", "payroll.sqlite3", "rules.json", "onpay_mapping.json"}
                 allowed |= len(path.parts) == 2 and path.parts[0] == "uploads"
-                if not allowed or path.is_absolute() or ".." in path.parts or "\\" in name:
+                if (not allowed or path.is_absolute() or ".." in path.parts
+                        or "\\" in name or str(path) != name):
                     raise ValueError("The history file contains an unexpected path.")
             manifest = json.loads(archive.read("manifest.json"))
             if manifest.get("format") != FORMAT or manifest.get("version") != 1:
@@ -104,6 +105,11 @@ def _unpack_checked(raw: bytes, folder: Path) -> dict:
                     raise ValueError("The history file contains invalid settings.")
         database = sqlite3.connect(folder / "payroll.sqlite3")
         try:
+            database.execute("PRAGMA trusted_schema=OFF")
+            schema = database.execute("SELECT type, name, sql FROM sqlite_master").fetchall()
+            if any(kind in ('trigger', 'view') or (sql and 'CREATE VIRTUAL TABLE' in sql.upper())
+                   for kind, name, sql in schema):
+                raise ValueError("The history database contains unexpected executable objects.")
             if database.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                 raise ValueError("The saved payroll database did not pass its integrity check.")
             for name in TABLES:
@@ -129,6 +135,11 @@ def restore_archive(raw: bytes, store: Store) -> dict:
     with tempfile.TemporaryDirectory(prefix="sitterwise-restore-", dir=root.parent) as tmp:
         folder = Path(tmp)
         manifest = _unpack_checked(raw, folder)
+        for name in manifest["files"]:
+            target = root / name
+            if (target.is_symlink() or not target.resolve().is_relative_to(root.resolve())
+                    or any(parent.is_symlink() for parent in target.parents if parent != root and root in parent.parents)):
+                raise ValueError("The history destination contains an unsafe symbolic link.")
         # Everything is verified before changing the destination. Preserve any
         # blank-install settings if a filesystem error interrupts the restore.
         originals = {}

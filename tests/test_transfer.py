@@ -88,6 +88,39 @@ class PayrollHandoff(unittest.TestCase):
             restore_archive(raw.getvalue(), self.new)
         self.assertFalse((self.root / "outside.txt").exists())
 
+    def test_restore_cannot_follow_a_destination_symlink(self):
+        raw = create_archive(self.old)
+        outside = self.root / "outside"
+        outside.mkdir()
+        (self.new.path.parent / "uploads").symlink_to(outside)
+        with self.assertRaisesRegex(ValueError, "symbolic link"):
+            restore_archive(raw, self.new)
+        self.assertEqual(list(outside.iterdir()), [])
+        self.assertEqual(self.new.list_runs(), [])
+
+    def test_archive_rejects_normalized_alias_paths(self):
+        raw = io.BytesIO(create_archive(self.old))
+        with zipfile.ZipFile(raw, "a") as archive:
+            archive.writestr("uploads//alias.csv", "bad")
+        with self.assertRaisesRegex(ValueError, "unexpected path"):
+            restore_archive(raw.getvalue(), self.new)
+        self.assertEqual(self.new.list_runs(), [])
+
+    def test_archive_cannot_install_database_triggers(self):
+        self.old.db.execute("CREATE TRIGGER unexpected AFTER INSERT ON audit_log BEGIN DELETE FROM runs; END")
+        self.old.db.commit()
+        raw = create_archive(self.old)
+        with self.assertRaisesRegex(ValueError, "executable objects"):
+            restore_archive(raw, self.new)
+        self.assertEqual(self.new.list_runs(), [])
+
+    def test_backup_never_contains_the_local_access_key(self):
+        from payroll.security import access_token
+        token = access_token(self.old.path)
+        with zipfile.ZipFile(io.BytesIO(create_archive(self.old))) as archive:
+            self.assertFalse(any("access-token" in name for name in archive.namelist()))
+            self.assertTrue(all(token.encode() not in archive.read(name) for name in archive.namelist()))
+
 
 class PackagedAppIsolation(unittest.TestCase):
     def test_packaged_data_survives_replacing_the_application(self):

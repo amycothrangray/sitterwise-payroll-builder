@@ -50,7 +50,7 @@ class RosterEntry:
     onpay_clock_user: str = ""
     onpay_employee_id: str = ""
     # Somebody's legal name in OnPay is often not the name Sitterwise shows -
-    # Lissa's OnPay record is under Elisabeth R Gray. Without somewhere to
+    # a caregiver may use a different legal name in OnPay. Without somewhere to
     # record that, importing OnPay's employee list makes a second roster
     # entry for the same person and then reports the first as missing.
     onpay_name: str = ""
@@ -148,6 +148,8 @@ def _text(value) -> str:
 
 def _sheets(path: Path) -> list[tuple[str, list[str], list[dict]]]:
     """Every sheet of an export, as (sheet name, columns, people)."""
+    from .security import checked_workbook
+    checked_workbook(path)
     if path.suffix.lower() in (".xlsx", ".xlsm"):
         import openpyxl
         workbook = openpyxl.load_workbook(path, data_only=True, read_only=True)
@@ -185,7 +187,7 @@ def _one_row_each(found: list[tuple[RosterEntry, bool, str]],
     Two rows under one name is not always two people. Somebody who left and
     came back has a closed record and a live one, and the live one is the
     truth. Two live records is a different thing: Sitterwise really does have
-    two Maria Brants, on different rates. Nothing can be filled in safely for
+    two Robin Frosts, on different rates. Nothing can be filled in safely for
     either of them from a name, so they are left for a person and said out
     loud rather than matched to whichever came first.
     """
@@ -302,7 +304,7 @@ def parse_onpay_employee_export(path: Path | str) -> tuple[list[RosterEntry], li
 
             # OnPay's own name for them, middle name and all. This is what a
             # roster entry is matched on when Sitterwise calls somebody
-            # something else - Lissa's OnPay record is Elisabeth R Gray.
+            # something else - a caregiver may use a different legal name in OnPay.
             legal = " ".join(filter(None, [
                 _text(row.get(first_col)), _text(row.get(middle_col)) if middle_col else "",
                 _text(row.get(last_col))])) if not name_col else display
@@ -368,7 +370,7 @@ def merge_import(existing: dict[str, RosterEntry],
     leaves alone anything a person put on the roster themselves.
     """
     # OnPay knows people by their legal name, which is often not the name
-    # Sitterwise shows - Lissa's OnPay record is Elisabeth R Gray. Matching on
+    # Sitterwise shows - a caregiver may use a different legal name in OnPay. Matching on
     # the name alone would make a second roster entry for the same person and
     # then report the first as missing from OnPay. So a Clock User, an
     # employee id, or a legal name already recorded all count as the same one.
@@ -589,7 +591,7 @@ def compare_clock_users(roster: dict[str, RosterEntry],
 
         Matched on the name shown, the legal name OnPay holds them under, or
         the key itself - the file comes back with whatever OnPay calls them,
-        which for Lissa is Elisabeth R Gray.
+        which can differ from the name used for bookings.
         """
         if entry.caregiver_key in roster:
             return entry.caregiver_key

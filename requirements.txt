@@ -1,5 +1,6 @@
-openpyxl>=3.1
+openpyxl>=3.1.5
+defusedxml>=0.7.1
 
 # Only for reading OnPay's payroll register on the
 # CalSavers step. Payroll runs without it.
-pypdf
+pypdf>=6.18.1
