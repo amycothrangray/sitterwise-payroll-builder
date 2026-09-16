@@ -415,7 +415,11 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError("How much should they be paid?")
             data["person_name"] = name
             data["caregiver_key"] = data.get("caregiver_key") or normalise_name(name)
-            return self._json({"ok": True, "id": store.add_recurring(data)})
+            try:
+                entry_id = store.add_recurring(data)
+            except ValueError as exc:
+                raise ApiError(str(exc))
+            return self._json({"ok": True, "id": entry_id})
 
         if path == "/api/runs":
             return self._create_run(self._json_body())
@@ -447,7 +451,10 @@ class Handler(BaseHTTPRequestHandler):
 
         match = re.fullmatch(r"/api/recurring/([0-9a-f]+)", path)
         if match:
-            store.update_recurring(match.group(1), self._json_body())
+            try:
+                store.update_recurring(match.group(1), self._json_body())
+            except ValueError as exc:
+                raise ApiError(str(exc))
             return self._json({"ok": True})
 
         match = re.fullmatch(r"/api/runs/([0-9a-f]+)/notes/apply", path)

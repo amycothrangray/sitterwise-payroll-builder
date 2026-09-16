@@ -1648,7 +1648,7 @@ function recurringSection() {
 
     ${entries.length ? `<div class="tablewrap">
       <table><thead><tr><th>Who</th><th>Amount</th><th>How often</th><th>Taxable</th>
-        <th>Active</th><th>Note</th><th></th></tr></thead><tbody>
+        <th>Active</th><th>Starts</th><th>First period only</th><th>Note</th><th></th></tr></thead><tbody>
       ${entries.map(e => `<tr>
         <td><strong>${esc(e.person_name)}</strong></td>
         <td><input type="text" value="${esc(e.amount)}" data-r="amount" style="width:90px"
@@ -1662,6 +1662,11 @@ function recurringSection() {
              onchange="saveRecurring('${e.id}', this)"></td>
         <td><input type="checkbox" data-r="active" ${Number(e.active) ? 'checked' : ''}
              onchange="saveRecurring('${e.id}', this)"></td>
+        <td><input type="date" value="${esc(e.starts_on || '')}" data-r="starts_on"
+             aria-label="Start date" onchange="saveRecurring('${e.id}', this)"></td>
+        <td><input type="text" value="${esc(e.first_amount || '')}" data-r="first_amount"
+             aria-label="First-period amount" placeholder="Same amount" inputmode="decimal"
+             style="width:110px" onchange="saveRecurring('${e.id}', this)"></td>
         <td><input type="text" value="${esc(e.note || '')}" data-r="note" style="min-width:150px"
              onchange="saveRecurring('${e.id}', this)"></td>
         <td><button class="btn btn-sm btn-ghost" onclick="deleteRecurring('${e.id}')">Remove</button></td>
@@ -1678,6 +1683,9 @@ function recurringSection() {
           <option value="weekly">Every payroll</option>
         </select>
       </label>
+      <label>Starts on <input type="date" id="rstarts"></label>
+      <label>First-period amount (optional)
+        <input type="text" id="rfirst" placeholder="Same as usual" inputmode="decimal"></label>
       <label>What for <input type="text" id="rnote" placeholder="What it is for"></label>
     </div>
     <div style="margin-top:12px"><button class="btn" onclick="addRecurring()">Add</button></div>
@@ -1691,6 +1699,8 @@ async function addRecurring() {
     frequency: $('#rfreq').value,
     schedule: 'first_monday',
     taxable: true,
+    starts_on: $('#rstarts').value,
+    first_amount: $('#rfirst').value.trim(),
     note: $('#rnote').value.trim(),
   };
   try {
@@ -1709,6 +1719,7 @@ async function saveRecurring(id, input) {
     await post('/api/recurring/' + id, {
       amount: get('amount'), frequency: get('frequency'), note: get('note'),
       taxable: on('taxable'), active: on('active'),
+      starts_on: get('starts_on'), first_amount: get('first_amount'),
     });
     S.recurring = await api('/api/recurring');
     toast('Saved.');

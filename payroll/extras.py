@@ -141,6 +141,9 @@ def is_due(entry: dict, period_start: date, period_end: date) -> bool:
     """
     if not entry.get("active", 1):
         return False
+    starts_on = entry.get("starts_on") or ""
+    if starts_on and date.fromisoformat(starts_on) > period_end:
+        return False
     frequency = entry.get("frequency", "monthly")
     if frequency == "weekly":
         return True
@@ -167,6 +170,12 @@ def recurring_payroll(entry: dict, period_start: date, period_end: date) -> Care
     and no tiers, because there is no booked work behind it.
     """
     amount = amount_of(entry.get("amount"))
+    starts_on = entry.get("starts_on") or ""
+    first_amount = entry.get("first_amount") or ""
+    first_period = bool(starts_on and first_amount and
+                        period_start <= date.fromisoformat(starts_on) <= period_end)
+    if first_period:
+        amount = amount_of(first_amount)
     frequency = entry.get("frequency", "monthly")
     label = {"weekly": "weekly", "monthly": "monthly", "one_off": "one-off"}.get(
         frequency, frequency)
@@ -174,6 +183,8 @@ def recurring_payroll(entry: dict, period_start: date, period_end: date) -> Care
     reason = f"Set up as {label} pay in Settings"
     if detail:
         reason += f" - {detail}"
+    if first_period:
+        reason += f" (first-period amount; usual {label} amount ${amount_of(entry['amount'])})"
 
     adjustment = Adjustment(
         id="", caregiver_key=entry["caregiver_key"], kind="recurring_pay",
