@@ -220,6 +220,7 @@ VIEWS.payroll = () => {
     ${r.run.locked ? '<div class="banner notes">This week is marked finished in the app. Do not import it again if it has already been paid in OnPay.</div>' : ''}
     <section class="card flow-step"><span class="step-number">1</span><div class="step-body">
       <h2>Bookings uploaded</h2><p>${r.totals.caregivers} people · ${plural(r.totals.jobs, 'booking', 'bookings')} · <strong>${money(r.totals.total_paid)}</strong> before taxes</p>
+      ${(r.late_tips || []).length ? `<p class="muted">Included automatically: ${money(r.late_tips.reduce((sum,t) => sum + num(t.amount), 0))} in late tips from previously paid bookings.</p>` : ''}
       ${recurring.length ? `<p class="muted">Weekly and scheduled pay included: ${esc(recurring.join(' · '))}.</p>` : ''}
       <a href="#/home">Start a different week</a>
     </div></section>
@@ -280,7 +281,8 @@ VIEWS.home = () => {
       1. Upload bookings
     </button>
     <div class="hint">or drop the file here — .xlsx or .csv</div>
-    <div class="hint">A pay week that crosses a month end needs both months —
+    <div class="hint">Use a fresh export including last week's bookings to pick up late tips.
+      At month-end, include both months —
       pick or drop them both.</div>
     <input type="file" id="file" accept=".xlsx,.xlsm,.csv" hidden multiple>
   </div>
@@ -407,7 +409,7 @@ function periodButtons(choices, heading) {
       <div class="row">
         ${choices.map(c => `
           <button class="btn" onclick="pickPeriod(${jsArg(c.start)},${jsArg(c.end)})">
-            ${esc(c.label)} <span class="faint">· ${plural(c.jobs, 'job', 'jobs')}</span>
+            ${esc(c.label)} <span class="faint">· ${plural(c.jobs, 'job', 'jobs')}${c.late_tips ? ' · ' + plural(c.late_tips, 'late tip', 'late tips') : ''}</span>
           </button>`).join('')}
       </div>
     </div>`;
@@ -606,7 +608,8 @@ function payLines(c) {
       c.dt_premium, overtimeBehind(c, true)));
   }
   if (num(c.tips) > 0) lines.push(line('Tips', 'Not Sitterwise wages — entered separately in OnPay',
-    c.tips, jobsBehind(c, j => num(j.tip) > 0, j => money(j.tip))));
+    c.tips, jobsBehind(c, j => num(j.tip) > 0, j => money(j.tip))
+      + (c.late_tips || []).map(t => `<div class="faint">Late tip: ${esc(t.workday)} · booking ${esc(t.booking_id)} · ${esc(t.client_name)} · ${money(t.amount)}</div>`).join('')));
   if (num(c.bonus) > 0) lines.push(line('Lifesaver bonuses', 'Taxable', c.bonus,
     jobsBehind(c, j => num(j.bonus) + num(j.lifesaver_bonus) > 0,
       j => money(num(j.bonus) + num(j.lifesaver_bonus)))));

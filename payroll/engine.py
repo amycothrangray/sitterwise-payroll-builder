@@ -160,6 +160,7 @@ class CaregiverPayroll:
     # have been read as one, and nothing below this point can be trusted for
     # them, so the check stops it rather than paying either.
     caregiver_id_disagrees: list[str] = field(default_factory=list)
+    late_tips: list[dict] = field(default_factory=list)
 
     @property
     def hours_worked(self) -> Decimal:
@@ -215,6 +216,7 @@ class CaregiverPayroll:
             "dt_premium": str(self.dt_premium),
             "premium_pay": str(self.premium_pay),
             "tips": str(self.tips),
+            "late_tips": self.late_tips,
             "bonus": str(self.bonus),
             "mileage_miles": str(self.mileage_miles),
             "mileage_amount": str(self.mileage_amount),

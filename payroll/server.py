@@ -27,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import calsavers, combine, exports, extras, settings_files, transfer
+from . import calsavers, combine, exports, extras, late_tips, settings_files, transfer
 from .security import MAX_UPLOAD_BYTES, MAX_JSON_BYTES, access_token, local_headers
 from .engine import Adjustment
 from .importer import import_export
@@ -105,6 +105,7 @@ def load_run(store: Store, run_id: str):
     result = _cached_import(source, rules)
     roster = store.roster()
     recurring = store.list_recurring(active_only=True)
+    carried_tips, tip_problems = late_tips.for_run(store, record)
     store.ensure_roster_entries(
         [(j.caregiver_key, j.display_name) for j in result.jobs
          if j.caregiver_key and j.is_payable]
@@ -112,7 +113,8 @@ def load_run(store: Store, run_id: str):
         # ever put them on the roster - and without a roster entry they read
         # as "not in OnPay", which stops payroll rather than asking about it.
         + [(e["caregiver_key"], e["person_name"]) for e in recurring
-           if e["caregiver_key"]])
+           if e["caregiver_key"]]
+        + [(t["caregiver_key"], t["caregiver_name"]) for t in carried_tips])
     roster = store.roster()
 
     run = build_run(
@@ -123,7 +125,7 @@ def load_run(store: Store, run_id: str):
         adjustments=store.adjustments(run_id),
         previously_paid=store.previously_paid(exclude_run_id=run_id),
         import_result=result,
-        recurring=recurring,
+        recurring=recurring, late_tips=carried_tips, tip_problems=tip_problems,
     )
     return record, run, roster
 
@@ -198,6 +200,7 @@ def run_payload(store: Store, run_id: str) -> dict:
         "applied_notes": store.notes_for_run(run_id),
         "caregivers": caregivers,
         "excluded_jobs": [j.to_dict() for j in run.excluded_jobs],
+        "late_tips": run.late_tips,
         "entered_count": sum(1 for c in run.caregivers if entered.get(c.key)),
         "rules": {
             "tiers": [{"key": t["key"], "label": t["label"], "rate": str(t["rate"])}
@@ -462,6 +465,12 @@ class Handler(BaseHTTPRequestHandler):
         if key == "onpay_import" and waiting_notes(store, record):
             raise ApiError("Saved pay changes need attention before downloading. "
                            "Open Payroll checks to apply or resolve them.")
+        if key == "onpay_import" and record['status'] != 'finalized':
+            # Money already exported for OnPay must not grow when another
+            # booking file arrives. Further tip increases wait for next time.
+            with store.db:
+                store.db.execute("UPDATE runs SET late_tips_snapshot=?,tip_export_snapshot=? WHERE id=?",
+                    (json.dumps(run.late_tips), json.dumps(late_tips.payments_for(run)), run_id))
         store.log("export_downloaded", item["name"], run_id)
         self._send(200, item["content"].encode("utf-8-sig"),
                    item.get("content_type", "text/csv; charset=utf-8"),
@@ -678,18 +687,25 @@ class Handler(BaseHTTPRequestHandler):
         if match:
             run_id = match.group(1)
             self._require_open(run_id)
-            _, run, _ = load_run(store, run_id)
+            record, run, _ = load_run(store, run_id)
+            if (record['tip_export_snapshot'] is not None
+                    and json.loads(record['tip_export_snapshot']) != late_tips.payments_for(run)):
+                raise ApiError("Tips changed after the last OnPay download. Download the updated file and verify OnPay before marking this payroll finished.")
             if not run.summary["can_finalize"]:
                 raise ApiError(
                     "There are still things that have to be sorted out before this payroll "
                     "can be finished. They are listed at the top of the payroll check.")
-            store.finalize_run(run_id, [j.booking_id for j in run.period_jobs], run.totals())
+            store.finalize_run(run_id, [j.booking_id for j in run.period_jobs], run.totals(),
+                               late_tips.payments_for(run), run.late_tips)
             return self._json({"ok": True})
 
         match = re.fullmatch(r"/api/runs/([0-9a-f]+)/unlock", path)
         if match:
             data = self._json_body()
-            store.unlock_run(match.group(1), data.get("reason", ""))
+            try:
+                store.unlock_run(match.group(1), data.get("reason", ""))
+            except ValueError as exc:
+                raise ApiError(str(exc))
             return self._json({"ok": True})
 
         return self._error("No such thing here.", 404)
@@ -772,6 +788,7 @@ class Handler(BaseHTTPRequestHandler):
 
         rules = Rules.load()
         result = _cached_import(target, rules)
+        late_tips.observe_export(self.store, result)
         start, end, note = suggest_period(result, rules)
         payable = [j for j in result.jobs if j.is_payable]
         caregivers = {j.caregiver_key for j in payable if j.caregiver_key}
@@ -792,6 +809,24 @@ class Handler(BaseHTTPRequestHandler):
                     if count:
                         choices.append({"start": lo.isoformat(), "end": hi.isoformat(),
                                         "label": label, "jobs": count, "kind": "half_month"})
+        # A late-tip-only payroll still needs a selectable next week.
+        finished = [r for r in self.store.list_runs() if r['status'] == 'finalized']
+        if finished:
+            from datetime import timedelta
+            next_start = date.fromisoformat(max(r['period_end'] for r in finished)) + timedelta(days=1)
+            next_end = next_start + timedelta(days=6)
+            pending, pending_problems = late_tips.for_run(self.store, dict(
+                id='', status='open', period_start=next_start.isoformat(), period_end=next_end.isoformat()), reserve=False)
+            if pending or pending_problems:
+                choice = next((c for c in choices if c['start'] == next_start.isoformat()), None)
+                if choice is None:
+                    choice = dict(start=next_start.isoformat(), end=next_end.isoformat(),
+                                  label=period_label(next_start, next_end), jobs=0, kind='week')
+                    choices.append(choice)
+                choice['late_tips'] = len(pending)
+                if any(r['period_start'] == start.isoformat() and r['period_end'] == end.isoformat() for r in finished):
+                    start, end = next_start, next_end
+                    note = 'Late tips from previously paid bookings are ready for the next payroll.'
         self.store.log("export_uploaded",
                        f"{target.name}: {len(result.jobs)} bookings, "
                        f"{len(caregivers)} caregivers")
@@ -827,6 +862,7 @@ class Handler(BaseHTTPRequestHandler):
 
         rules = Rules.load()
         result = _cached_import(source, rules)
+        late_tips.observe_export(store, result)
         # A double click or re-upload must not create a second payroll for a
         # finished week. Keep the finalized run and its paid-booking ledger.
         for previous in sorted(store.list_runs(), key=lambda r: r["status"] != "finalized"):
@@ -839,7 +875,9 @@ class Handler(BaseHTTPRequestHandler):
                                    "finalized": previous["status"] == "finalized"})
         payable = [j for j in result.jobs
                    if j.is_payable and j.workday and start <= j.workday <= end]
-        if not payable:
+        carried, tip_problems = late_tips.for_run(store, dict(
+            id='', status='open', period_start=start.isoformat(), period_end=end.isoformat()), reserve=False)
+        if not payable and not carried and not tip_problems:
             raise ApiError(
                 f"There are no jobs to pay between {start:%b %-d} and {end:%b %-d} in this "
                 "export. Check the pay period.")
@@ -850,6 +888,7 @@ class Handler(BaseHTTPRequestHandler):
             period_label(start, end), start, end, rules.snapshot(),
             data.get("source_filename") or source.name,
             result.source_sha256, str(source))
+        late_tips.for_run(store, store.get_run(run_id))
         return self._json({"ok": True, "run_id": run_id})
 
     def _uploaded_path(self, value):

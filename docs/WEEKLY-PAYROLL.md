@@ -3,6 +3,7 @@
 Open Sitterwise Payroll. GitHub Desktop and Terminal are not part of payroll.
 
 1. **Upload bookings.** Choose your Sitterwise CSV or Excel export, then the pay week.
+   Use a fresh export that includes last week's bookings, so late tips are found.
    At month-end, upload both months together.
 2. **Download OnPay CSV.** Import it once into that pay week in OnPay. Compare the
    app's people, hours, and total with OnPay before continuing.
@@ -10,6 +11,16 @@ Open Sitterwise Payroll. GitHub Desktop and Terminal are not part of payroll.
    browser where OnPay is signed in. It will save and check paycheck memos.
 4. Review the payroll and submit it yourself in OnPay. Back in this app, select
    **Mark this week finished**. Downloading or copying notes does not submit payroll.
+
+Late tips on previously paid bookings are included automatically in the next
+payroll's Tips amount and paycheck notes. Only the unpaid increase is added;
+the booking's wages and hours are not paid again. Tips discovered after an
+OnPay CSV has been downloaded wait for the following payroll. Always mark a
+submitted week finished so the app knows which tips were paid.
+
+The app learns about tips from your uploads. If a tip is added to an older
+month, include a fresh export of that month too. It cannot find a tip that
+Sitterwise leaves out of the export.
 
 ## One-time setup
 

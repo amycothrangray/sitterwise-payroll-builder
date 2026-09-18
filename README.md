@@ -61,6 +61,13 @@ place.
 4. Review and submit payroll yourself in OnPay, then **Mark this week finished**
    in the app to protect against paying the same bookings again.
 
+Use fresh exports that include recently paid bookings. A late tip on one of
+those bookings is added to the next payroll's Tips item and paycheck notes,
+without paying the old wages again. Only the increase above tips already paid
+is included. After the OnPay CSV is downloaded, that payroll's late tips are
+fixed; further increases wait for the next payroll. At a month boundary, upload
+both months. Tips on older bookings require an updated export of that month.
+
 The main navigation is New payroll, This payroll, History, and More. Settings,
 roster connections, detailed checks, manual entry, and reports are under More.
 Only actionable checks appear in the everyday workflow; an unknown local

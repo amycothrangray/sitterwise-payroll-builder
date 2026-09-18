@@ -140,6 +140,7 @@ class PayrollRun:
     reconciliation: Reconciliation
     period_jobs: list[Job]
     excluded_jobs: list[Job]
+    late_tips: list[dict] = field(default_factory=list)
 
     @property
     def label(self) -> str:
@@ -195,7 +196,9 @@ def build_run(path, rules: Rules, period_start: date, period_end: date,
               adjustments: list[Adjustment] | None = None,
               previously_paid: dict[str, str] | None = None,
               import_result: ImportResult | None = None,
-              recurring: list[dict] | None = None) -> PayrollRun:
+              recurring: list[dict] | None = None,
+              late_tips: list[dict] | None = None,
+              tip_problems: list[Finding] | None = None) -> PayrollRun:
     result = import_result or import_export(path, rules)
     roster = roster or {}
     adjustments = adjustments or []
@@ -233,6 +236,20 @@ def build_run(path, rules: Rules, period_start: date, period_end: date,
         caregivers.append(
             calculate_caregiver(name, key, jobs, rules, adjustments_by_caregiver.get(key, [])))
     caregivers.extend(standalone)
+    for tip in late_tips or []:
+        matching = [c for c in caregivers if c.key == tip['caregiver_key']
+                    or (tip['caregiver_id'] and c.caregiver_id == tip['caregiver_id'])]
+        if matching:
+            caregiver = matching[0]
+            ids = {v for v in (caregiver.caregiver_id, tip['caregiver_id']) if v}
+            if len(matching) > 1 or len(ids) > 1:
+                caregiver.caregiver_id_disagrees = sorted(ids) or ['ambiguous identity']
+        else:
+            caregiver = calculate_caregiver(tip['caregiver_name'], tip['caregiver_key'], [], rules)
+            caregivers.append(caregiver)
+        caregiver.caregiver_id = caregiver.caregiver_id or tip['caregiver_id']
+        caregiver.late_tips.append(tip)
+        caregiver.tips = money(caregiver.tips + Decimal(tip['amount']))
     caregivers.sort(key=lambda c: (c.name == "", c.name.lower()))
 
     findings = run_checks(
@@ -241,6 +258,8 @@ def build_run(path, rules: Rules, period_start: date, period_end: date,
         period_start=period_start, period_end=period_end,
         period_all_jobs=in_period,
     )
+
+    findings.extend(tip_problems or [])
 
     reconciliation = _reconcile(result, in_period, payable, excluded, caregivers)
 
@@ -254,6 +273,7 @@ def build_run(path, rules: Rules, period_start: date, period_end: date,
         reconciliation=reconciliation,
         period_jobs=payable,
         excluded_jobs=excluded,
+        late_tips=list(late_tips or []),
     )
 
 

@@ -19,7 +19,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parent
 OUT = Path(os.environ.get("SITTERWISE_MAC_BUILD_DIR",
                          str(Path(tempfile.gettempdir()) / "sitterwise-payroll-macos")))
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 
 def main():
