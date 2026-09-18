@@ -22,6 +22,22 @@ from .roster import RosterEntry, READY, SETUP_INCOMPLETE, UNCHECKED
 from .paths import DATA_DIR
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS tip_payments (
+    run_id TEXT NOT NULL,
+    booking_id TEXT NOT NULL,
+    amount TEXT NOT NULL,
+    details TEXT NOT NULL,
+    PRIMARY KEY (run_id, booking_id)
+);
+CREATE TABLE IF NOT EXISTS tip_updates (
+    booking_id TEXT PRIMARY KEY,
+    amount TEXT NOT NULL,
+    details TEXT NOT NULL,
+    source_sha256 TEXT NOT NULL,
+    claimed_run_id TEXT NOT NULL DEFAULT '',
+    problem TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS runs (
     id              TEXT PRIMARY KEY,
     label           TEXT NOT NULL,
@@ -35,7 +51,10 @@ CREATE TABLE IF NOT EXISTS runs (
     source_path     TEXT,
     rules_snapshot  TEXT NOT NULL,
     rules_version   TEXT,
-    totals_snapshot TEXT
+    totals_snapshot TEXT,
+    tips_recorded INTEGER NOT NULL DEFAULT 0,
+    late_tips_snapshot TEXT NOT NULL DEFAULT '[]',
+    tip_export_snapshot TEXT
 );
 
 CREATE TABLE IF NOT EXISTS paid_bookings (
@@ -167,7 +186,10 @@ class Store:
         column added after somebody started using the app has to be added
         here or their database quietly lacks it.
         """
-        wanted = {"roster": {"onpay_name": "TEXT DEFAULT ''",
+        wanted = {"runs": {"tips_recorded": "INTEGER NOT NULL DEFAULT 0",
+                           "late_tips_snapshot": "TEXT NOT NULL DEFAULT '[]'",
+                           "tip_export_snapshot": "TEXT"},
+                  "roster": {"onpay_name": "TEXT DEFAULT ''",
                              "onpay_rate": "TEXT DEFAULT ''",
                              "onpay_pay_type": "TEXT DEFAULT ''",
                              "onpay_pay_frequency": "TEXT DEFAULT ''"},
@@ -234,25 +256,45 @@ class Store:
             raise ValueError("This payroll is locked. Unlock it before deleting it.")
         for table in ("paid_bookings", "adjustments", "entry_progress"):
             self.db.execute(f"DELETE FROM {table} WHERE run_id=?", (run_id,))
+        self.db.execute("DELETE FROM tip_payments WHERE run_id=?", (run_id,))
+        self.db.execute("UPDATE tip_updates SET claimed_run_id='' WHERE claimed_run_id=?", (run_id,))
         self.db.execute("DELETE FROM runs WHERE id=?", (run_id,))
         self.db.commit()
         self.log("run_deleted", run["label"], run_id)
 
-    def finalize_run(self, run_id: str, booking_ids: list[str], totals: dict) -> None:
-        self.db.execute(
-            "UPDATE runs SET status='finalized', finalized_at=?, totals_snapshot=? WHERE id=?",
-            (now(), json.dumps(totals), run_id))
-        self.db.executemany(
-            "INSERT OR REPLACE INTO paid_bookings (booking_id, run_id) VALUES (?,?)",
-            [(b, run_id) for b in booking_ids])
-        self.db.commit()
+    def finalize_run(self, run_id: str, booking_ids: list[str], totals: dict,
+                     tip_payments: list[dict] | None = None,
+                     late_tips: list[dict] | None = None) -> None:
+        from .late_tips import save_payments
+        with self.db:
+            self.db.execute(
+                "UPDATE runs SET status='finalized', finalized_at=?, totals_snapshot=?, late_tips_snapshot=? WHERE id=?",
+                (now(), json.dumps(totals), json.dumps(late_tips or []), run_id))
+            self.db.executemany(
+                "INSERT OR REPLACE INTO paid_bookings (booking_id, run_id) VALUES (?,?)",
+                [(b, run_id) for b in booking_ids])
+            if tip_payments is not None:
+                save_payments(self.db, run_id, tip_payments)
+            self.db.execute("UPDATE tip_updates SET claimed_run_id='' WHERE claimed_run_id=?", (run_id,))
         self.log("run_finalized", f"{len(booking_ids)} bookings locked", run_id)
 
     def unlock_run(self, run_id: str, reason: str) -> None:
-        self.db.execute(
-            "UPDATE runs SET status='open', finalized_at=NULL WHERE id=?", (run_id,))
-        self.db.execute("DELETE FROM paid_bookings WHERE run_id=?", (run_id,))
-        self.db.commit()
+        later = self.db.execute("""SELECT 1 FROM tip_payments a
+            JOIN tip_payments b ON b.booking_id=a.booking_id AND b.run_id!=a.run_id
+            JOIN runs current ON current.id=a.run_id JOIN runs other ON other.id=b.run_id
+            WHERE a.run_id=? AND other.status='finalized'
+              AND other.period_end > current.period_end LIMIT 1""", (run_id,)).fetchone()
+        if later:
+            raise ValueError("A later payroll already paid a tip for these bookings. Reopen that later payroll first.")
+        with self.db:
+            for row in self.db.execute("SELECT booking_id,details FROM tip_payments WHERE run_id=?", (run_id,)):
+                if json.loads(row['details'])['kind'] == 'late':
+                    self.db.execute("UPDATE tip_updates SET claimed_run_id=? WHERE booking_id=?", (run_id, row['booking_id']))
+            self.db.execute(
+                "UPDATE runs SET status='open', finalized_at=NULL, tips_recorded=0, late_tips_snapshot='[]', tip_export_snapshot=NULL WHERE id=?",
+                (run_id,))
+            self.db.execute("DELETE FROM paid_bookings WHERE run_id=?", (run_id,))
+            self.db.execute("DELETE FROM tip_payments WHERE run_id=?", (run_id,))
         self.log("run_unlocked", reason or "no reason given", run_id)
 
     def previously_paid(self, exclude_run_id: str | None = None) -> dict[str, str]:

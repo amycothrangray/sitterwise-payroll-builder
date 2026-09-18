@@ -85,6 +85,11 @@ def payroll_detail_csv(run: PayrollRun) -> str:
                 job.paid_to_caregiver, _basis(job.rate_basis),
                 " | ".join(job.import_notes),
             ])
+        for tip in caregiver.late_tips:
+            out.writerow([caregiver.name, tip['booking_id'], tip['workday'], '', '',
+                          tip['client_name'], 'Late tip', '', ZERO, '', ZERO, ZERO,
+                          '', ZERO, ZERO, Decimal(tip['amount']), '', ZERO, ZERO,
+                          ZERO, ZERO, '', 'Previously paid booking; unpaid tip only'])
     return buffer.getvalue()
 
 
@@ -542,8 +547,11 @@ def onpay_pay_rows(caregiver: CaregiverPayroll, emp_num: str,
 
     cash(ids.get("bonus", 7), _q(caregiver.bonus + other_taxable, _Q2),
          note=_bonus_note(caregiver))
-    cash(ids.get("tips", 208), caregiver.tips, note=_jobs_note(
-        [j for j in caregiver.jobs if j.tip]))
+    tip_notes = [_jobs_note([j for j in caregiver.jobs if j.tip])]
+    tip_notes.extend(f"Late tip for {t['workday']} {_client_short(t['client_name'])} "
+                     f"(booking {t['booking_id']}): ${Decimal(t['amount']):.2f}"
+                     for t in caregiver.late_tips)
+    cash(ids.get("tips", 208), caregiver.tips, note="; ".join(n for n in tip_notes if n))
     cash(ids.get("reimbursement", 107), caregiver.reimbursements,
          note=_reimbursement_note(caregiver))
 

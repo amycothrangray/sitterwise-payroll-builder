@@ -772,7 +772,7 @@ def summarise(caregivers: list[CaregiverPayroll], findings: list[Finding]) -> di
         "blocked": counts.get("blocked", 0),
         "total": len(caregivers),
         "statuses": statuses,
-        "can_finalize": counts.get("blocked", 0) == 0,
+        "can_finalize": not any(f.level == STOP for f in findings),
         "stop_count": sum(1 for f in findings if f.level == STOP),
         "review_count": sum(1 for f in findings if f.level == REVIEW),
         "note_count": sum(1 for f in findings if f.level == NOTE),

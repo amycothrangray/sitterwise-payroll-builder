@@ -11,12 +11,13 @@ import sqlite3
 import tempfile
 import zipfile
 
-from .store import Store, now
+from .store import Store, SCHEMA, now
 
 FORMAT = "sitterwise-payroll-history"
 MAX_BYTES = 512 * 1024 * 1024
-TABLES = ("runs", "paid_bookings", "adjustments", "entry_progress", "roster",
+LEGACY_TABLES = ("runs", "paid_bookings", "adjustments", "entry_progress", "roster",
           "notes", "recurring_pay", "audit_log")
+TABLES = LEGACY_TABLES + ("tip_payments", "tip_updates")
 
 
 def _digest(data: bytes) -> str:
@@ -55,7 +56,7 @@ def create_archive(store: Store, settings_dir: Path | None = None) -> bytes:
             files[name] = path.read_bytes()
         if sum(map(len, files.values())) > MAX_BYTES:
             raise ValueError("This history is too large for an in-app transfer.")
-        manifest = {"format": FORMAT, "version": 1, "created_at": now(),
+        manifest = {"format": FORMAT, "version": 2, "created_at": now(),
                     "counts": counts,
                     "files": {name: _digest(data) for name, data in files.items()}}
         out = io.BytesIO()
@@ -86,7 +87,7 @@ def _unpack_checked(raw: bytes, folder: Path) -> dict:
                         or "\\" in name or str(path) != name):
                     raise ValueError("The history file contains an unexpected path.")
             manifest = json.loads(archive.read("manifest.json"))
-            if manifest.get("format") != FORMAT or manifest.get("version") != 1:
+            if manifest.get("format") != FORMAT or manifest.get("version") not in (1, 2):
                 raise ValueError("This is not a supported Sitterwise history file.")
             hashes = manifest.get("files", {})
             if set(hashes) != set(names) - {"manifest.json"}:
@@ -112,7 +113,7 @@ def _unpack_checked(raw: bytes, folder: Path) -> dict:
                 raise ValueError("The history database contains unexpected executable objects.")
             if database.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                 raise ValueError("The saved payroll database did not pass its integrity check.")
-            for name in TABLES:
+            for name in (LEGACY_TABLES if manifest["version"] == 1 else TABLES):
                 count = database.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0]
                 if count != manifest["counts"][name]:
                     raise ValueError("The saved payroll record counts do not match.")
@@ -157,6 +158,8 @@ def restore_archive(raw: bytes, store: Store) -> dict:
             source = sqlite3.connect(folder / "payroll.sqlite3")
             try:
                 source.backup(store.db)
+                store.db.executescript(SCHEMA)
+                store._add_missing_columns()
                 store.normalise_roster_statuses()
             finally:
                 source.close()
