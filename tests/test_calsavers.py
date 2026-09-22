@@ -15,6 +15,7 @@ Run them with:  python3 -m unittest discover -s tests -v
 from __future__ import annotations
 
 import sys
+import io
 import unittest
 from decimal import Decimal
 from pathlib import Path
@@ -46,6 +47,30 @@ def register(*blocks, deductions="28.52", summary=True):
     if summary:
         lines += run_summary(deductions)
     return "\n".join(lines)
+
+
+def register_pdf(text, password=None):
+    """A real, synthetic PDF exercises extraction as well as parsing."""
+    from pypdf import PdfWriter
+    from pypdf.generic import DictionaryObject, NameObject, DecodedStreamObject
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=612, height=1200)
+    font = DictionaryObject({NameObject('/Type'): NameObject('/Font'),
+                             NameObject('/Subtype'): NameObject('/Type1'),
+                             NameObject('/BaseFont'): NameObject('/Helvetica')})
+    page[NameObject('/Resources')] = DictionaryObject({NameObject('/Font'):
+        DictionaryObject({NameObject('/F1'): writer._add_object(font)})})
+    content = ['BT /F1 10 Tf 12 TL 40 1150 Td']
+    for line in text.splitlines():
+        escaped = line.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
+        content.append(f'({escaped}) Tj T*')
+    content.append('ET')
+    stream = DecodedStreamObject(); stream.set_data('\n'.join(content).encode())
+    page[NameObject('/Contents')] = writer._add_object(stream)
+    if password:
+        writer.encrypt(password)
+    out = io.BytesIO(); writer.write(out)
+    return out.getvalue()
 
 
 class ReadingARegister(unittest.TestCase):

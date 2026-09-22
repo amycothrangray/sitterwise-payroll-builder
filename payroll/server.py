@@ -27,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import calsavers, combine, exports, extras, late_tips, settings_files, transfer
+from . import calsavers, checklist, combine, exports, extras, late_tips, settings_files, transfer
 from .security import MAX_UPLOAD_BYTES, MAX_JSON_BYTES, access_token, local_headers
 from .engine import Adjustment
 from .importer import import_export
@@ -147,6 +147,18 @@ def waiting_notes(store: Store, record: dict) -> list[dict]:
     return out
 
 
+def note_problem_for_run(note, run):
+    problem = extras.note_problem(note)
+    if problem or note['kind'] not in extras.APPLIES_ITSELF:
+        return problem
+    matching = [j for j in run.period_jobs if j.caregiver_key == note['caregiver_key']]
+    if not matching:
+        return 'No bookings for this person this week. Handle this entry in OnPay and mark it done in Odds & Ends.'
+    if note.get('booking_id') and not any(j.booking_id == note['booking_id'] for j in matching):
+        return 'That booking is not in this payroll. Check the booking number and pay week.'
+    return ''
+
+
 def run_payload(store: Store, run_id: str) -> dict:
     record, run, roster = load_run(store, run_id)
     entered = store.entered_map(run_id)
@@ -193,11 +205,12 @@ def run_payload(store: Store, run_id: str) -> dict:
         "findings": [f.to_dict() for f in run.findings],
         "waiting_notes": [
             dict(n, kind_label=extras.note_label(n["kind"]),
-                 problem=extras.note_problem(n),
+                 problem=note_problem_for_run(n, run),
                  applies_itself=n["kind"] in extras.APPLIES_ITSELF)
             for n in waiting_notes(store, record)
         ],
         "applied_notes": store.notes_for_run(run_id),
+        "checklist": checklist.items_for(store, record, run, waiting_notes(store, record)),
         "caregivers": caregivers,
         "excluded_jobs": [j.to_dict() for j in run.excluded_jobs],
         "late_tips": run.late_tips,
@@ -439,8 +452,9 @@ class Handler(BaseHTTPRequestHandler):
         self._require_open(run_id)
         record = store.get_run(run_id)
         applied, skipped = [], []
+        _, run, _ = load_run(store, run_id)
         for note in waiting_notes(store, record):
-            problem = extras.note_problem(note)
+            problem = note_problem_for_run(note, run)
             if note["kind"] not in extras.APPLIES_ITSELF:
                 skipped.append({"note": note, "why": "This one needs you to decide."})
                 continue
@@ -560,7 +574,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/calsavers":
             # The register OnPay prints before a payroll is processed. Only
             # read - it never reaches CalSavers from here, somebody types it.
-            target = self._save_upload()
+            target = self._save_upload(allowed=(".pdf",), file_label="OnPay payroll register")
             try:
                 found = calsavers.read_register(target)
             except RuntimeError as exc:
@@ -688,6 +702,9 @@ class Handler(BaseHTTPRequestHandler):
             run_id = match.group(1)
             self._require_open(run_id)
             record, run, _ = load_run(store, run_id)
+            reminders = checklist.items_for(store, record, run, waiting_notes(store, record))
+            if not all(item['checked'] for item in reminders):
+                raise ApiError('Complete the Odds & Ends and scheduled-pay checklist on the main payroll screen first.')
             if (record['tip_export_snapshot'] is not None
                     and json.loads(record['tip_export_snapshot']) != late_tips.payments_for(run)):
                 raise ApiError("Tips changed after the last OnPay download. Download the updated file and verify OnPay before marking this payroll finished.")
@@ -698,6 +715,22 @@ class Handler(BaseHTTPRequestHandler):
             store.finalize_run(run_id, [j.booking_id for j in run.period_jobs], run.totals(),
                                late_tips.payments_for(run), run.late_tips)
             return self._json({"ok": True})
+
+        match = re.fullmatch(r"/api/runs/([0-9a-f]+)/checklist", path)
+        if match:
+            run_id = match.group(1)
+            self._require_open(run_id)
+            data = self._json_body()
+            record, run, _ = load_run(store, run_id)
+            item = next((i for i in checklist.items_for(store, record, run, waiting_notes(store, record))
+                         if i['key'] == data.get('key')), None)
+            if item is None or not isinstance(data.get('checked'), bool):
+                raise ApiError('Choose a checklist item and whether it is checked.')
+            try:
+                checklist.save(store, run_id, item, data['checked'])
+            except ValueError as exc:
+                raise ApiError(str(exc))
+            return self._json({'ok': True})
 
         match = re.fullmatch(r"/api/runs/([0-9a-f]+)/unlock", path)
         if match:
@@ -750,14 +783,15 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(
                 "This payroll is finished and locked. Unlock it first if you need to change it.")
 
-    def _save_upload(self) -> Path:
+    def _save_upload(self, allowed=(".xlsx", ".xlsm", ".csv"), file_label="bookings export") -> Path:
         filename = self.headers.get("X-Filename") or "upload.xlsx"
         filename = Path(unquote(filename)).name
         suffix = Path(filename).suffix.lower()
-        if suffix not in (".xlsx", ".xlsm", ".csv"):
+        if suffix not in allowed:
             raise ApiError(
-                "The app can read .xlsx and .csv files. That one is a "
-                f"{suffix or 'file with no extension'}.")
+                f"For the {file_label}, choose {' or '.join(allowed)}. "
+                f"That file is {suffix or 'missing its extension'}."
+                + (" In OnPay, open the Payroll Register report and choose Save as PDF." if allowed == ('.pdf',) else ''))
         raw = self._body()
         if not raw:
             raise ApiError("That file came through empty.")

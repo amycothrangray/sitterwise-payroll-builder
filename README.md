@@ -3,7 +3,7 @@
 Turns a Sitterwise bookings export into everything you need to enter payroll
 into OnPay, with the arithmetic shown for every figure.
 
-Runs on your own computer. Payroll data stays local unless you choose to upload it to OnPay or share the notes task with ChatGPT Work.
+Runs on your own computer. Payroll data stays local unless you choose to upload it to OnPay or share the notes task with Claude Cowork.
 
 Sitterwise payroll runs **weekly, Monday through Sunday**. Pay stubs go out by
 email through OnPay on Tuesday, and direct deposit lands on Friday.
@@ -55,8 +55,8 @@ place.
 1. **Upload bookings** and choose the Monday–Sunday pay week.
 2. **Download OnPay CSV**, import it once in OnPay, and compare the people,
    hours, and total shown in the app.
-3. **Copy notes for ChatGPT Work** and paste the task into a local Work chat
-   with your signed-in browser selected. It contains every paycheck memo,
+3. **Copy notes for Claude Cowork** and paste the task into Claude Cowork
+   with browser access to your signed-in OnPay session. It contains every paycheck memo,
    employee identifiers, and amounts to verify. The task authorizes notes only.
 4. Review and submit payroll yourself in OnPay, then **Mark this week finished**
    in the app to protect against paying the same bookings again.

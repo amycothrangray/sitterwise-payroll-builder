@@ -86,8 +86,18 @@ def register_text(path: Path | str) -> str:
             "Reading a PDF needs the pypdf package, which is not installed. "
             "In Terminal, run:  python3 -m pip install pypdf"
         ) from exc
-    reader = PdfReader(str(path))
-    return "\n".join((page.extract_text() or "") for page in reader.pages)
+    try:
+        reader = PdfReader(str(path))
+        if reader.is_encrypted:
+            raise RuntimeError('This PDF is password-protected. Download an unprotected Payroll Register PDF from OnPay.')
+        text = "\n".join((page.extract_text() or "") for page in reader.pages)
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError('This PDF could not be read. Download the Payroll Register again using Save as PDF in OnPay, then upload that file.') from exc
+    if not text.strip():
+        raise RuntimeError('This PDF has no readable text. Use Save as PDF in OnPay rather than a scan or screenshot.')
+    return text
 
 
 def _run_total(lines: list[str]) -> Decimal | None:
