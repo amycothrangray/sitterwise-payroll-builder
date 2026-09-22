@@ -40,6 +40,11 @@ assert.ok(flow.includes('Download caregiver PDFs'));
 assert.ok(flow.includes('/api/runs/abc/export/caregiver_pdfs'));
 assert.ok(flow.includes('Menu &gt; My Files'));
 assert.ok(flow.indexOf('Share caregiver breakdowns') < flow.indexOf('CalSavers contributions'));
+assert.ok(flow.includes('aria-label="Pay date"'));
+const paydayHtml = vm.runInContext('payDateField({period_end:"2026-09-20",pay_date:"2026-09-25"})',context);
+assert.ok(paydayHtml.includes('value="2026-09-25"'));
+assert.ok(paydayHtml.includes('min="2026-09-20"'));
+assert.ok(vm.runInContext('payDateField({})',context).includes('actual check date'));
 const blockedFlow=vm.runInContext(`S.downloads[0].download_blocked=true; VIEWS.payroll();`,context);
 assert.ok(!blockedFlow.includes('/export/caregiver_pdfs'));
 const decode = s => s.replace(/&(quot|#39|lt|gt|amp);/g, (_, k) =>
@@ -64,5 +69,28 @@ for (const value of ["O'Connor", "');globalThis.compromised=true;//", '&quot;);g
   request = null;
   await handlers.click({defaultPrevented:true,target:{closest:()=>({href:'http://127.0.0.1:8756/api/history-transfer'})}});
   assert.equal(request,null);
+  // A pending date save cannot give the operator an older PDF/task pair.
+  context.toast = message => { context.lastToast = message; };
+  vm.runInContext('S.payDateSaving=true',context);
+  await handlers.click({defaultPrevented:false,preventDefault:()=>{},
+    target:{closest:()=>({href:'http://127.0.0.1:8756/api/runs/abc/export/caregiver_pdfs'})}});
+  await vm.runInContext('copyNotesTask({})', context);
+  assert.equal(request,null);
+  assert.ok(context.lastToast.includes('Saving the pay date'));
+  const field = {value:'2026-09-24',disabled:false};
+  context.document.querySelector = () => field;
+  context.api = async (url,options) => { context.saved = {url,body:JSON.parse(options.body)}; };
+  context.refreshRun = async () => { context.refreshed = true; };
+  vm.runInContext('S.payDateSaving=false',context);
+  await vm.runInContext('savePayDate("2026-09-24")',context);
+  assert.equal(context.saved.url,'/api/runs/abc/pay-date');
+  assert.equal(context.saved.body.pay_date,'2026-09-24');
+  assert.equal(context.refreshed,true);
+  assert.equal(vm.runInContext('S.payDateSaving',context),false);
+  context.api = async () => { throw new Error('Invalid date'); };
+  vm.runInContext('S.run.run.pay_date="2026-09-25"',context);
+  await vm.runInContext('savePayDate("bad")',context);
+  assert.equal(field.value,'2026-09-25');
+  assert.equal(field.disabled,false);
   console.log('Web security checks passed: imported text, API authorization, destination checks, canceled downloads.');
 })().catch(e=>{ console.error(e); process.exitCode=1; });

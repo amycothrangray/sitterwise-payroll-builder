@@ -60,6 +60,7 @@ class LocalAccess(unittest.TestCase):
     def test_payroll_reads_writes_and_stop_require_local_key(self):
         for method, path in [('GET', '/api/state'), ('GET', '/api/history-transfer'),
                              ('GET', '/api/runs/abc/export/caregiver_pdfs'),
+                             ('POST', '/api/runs/abc/pay-date'),
                              ('POST', '/api/notes'), ('DELETE', '/api/notes/123'),
                              ('POST', '/api/stop')]:
             with self.subTest(method=method, path=path):

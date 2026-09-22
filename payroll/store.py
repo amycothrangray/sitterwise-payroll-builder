@@ -20,6 +20,7 @@ from .engine import Adjustment
 from .roster import RosterEntry, READY, SETUP_INCOMPLETE, UNCHECKED
 
 from .paths import DATA_DIR
+from .payday import checked_pay_date, suggested_pay_date
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tip_payments (
@@ -55,7 +56,8 @@ CREATE TABLE IF NOT EXISTS runs (
     tips_recorded INTEGER NOT NULL DEFAULT 0,
     late_tips_snapshot TEXT NOT NULL DEFAULT '[]',
     tip_export_snapshot TEXT,
-    checklist_state TEXT NOT NULL DEFAULT '{}'
+    checklist_state TEXT NOT NULL DEFAULT '{}',
+    pay_date TEXT
 );
 
 CREATE TABLE IF NOT EXISTS paid_bookings (
@@ -190,7 +192,8 @@ class Store:
         wanted = {"runs": {"tips_recorded": "INTEGER NOT NULL DEFAULT 0",
                            "late_tips_snapshot": "TEXT NOT NULL DEFAULT '[]'",
                            "tip_export_snapshot": "TEXT",
-                           "checklist_state": "TEXT NOT NULL DEFAULT '{}'"},
+                           "checklist_state": "TEXT NOT NULL DEFAULT '{}'",
+                           "pay_date": "TEXT"},
                   "roster": {"onpay_name": "TEXT DEFAULT ''",
                              "onpay_rate": "TEXT DEFAULT ''",
                              "onpay_pay_type": "TEXT DEFAULT ''",
@@ -227,19 +230,35 @@ class Store:
 
     # -- runs -----------------------------------------------------------
     def create_run(self, label, period_start: date, period_end: date, rules_snapshot: dict,
-                   source_filename: str, source_sha256: str, source_path: str) -> str:
+                   source_filename: str, source_sha256: str, source_path: str,
+                   pay_date: str | None = None) -> str:
+        payday = (suggested_pay_date(period_end) if pay_date is None
+                  else checked_pay_date(pay_date, period_end))
         run_id = uuid.uuid4().hex[:12]
         self.db.execute(
             """INSERT INTO runs (id,label,period_start,period_end,status,created_at,
                                  source_filename,source_sha256,source_path,
-                                 rules_snapshot,rules_version)
-               VALUES (?,?,?,?,'open',?,?,?,?,?,?)""",
+                                 rules_snapshot,rules_version,pay_date)
+               VALUES (?,?,?,?,'open',?,?,?,?,?,?,?)""",
             (run_id, label, period_start.isoformat(), period_end.isoformat(), now(),
              source_filename, source_sha256, source_path,
-             json.dumps(rules_snapshot), str(rules_snapshot.get("version", ""))))
+             json.dumps(rules_snapshot), str(rules_snapshot.get("version", "")), payday.isoformat()))
         self.db.commit()
         self.log("run_created", f"{label} from {source_filename}", run_id)
         return run_id
+
+    def set_pay_date(self, run_id: str, value: str) -> None:
+        record = self.get_run(run_id)
+        if record is None:
+            raise ValueError('That payroll run no longer exists.')
+        payday = checked_pay_date(value, date.fromisoformat(record['period_end'])).isoformat()
+        if payday == record.get('pay_date'):
+            return
+        # This is document metadata only. A finished run's wages and paid-booking
+        # ledger stay locked; its actual check date can still be recorded.
+        with self.db:
+            self.db.execute('UPDATE runs SET pay_date=? WHERE id=?', (payday, run_id))
+        self.log('pay_date_saved', f"{record.get('pay_date') or 'not recorded'} -> {payday}", run_id)
 
     def get_run(self, run_id: str) -> dict | None:
         row = self.db.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()

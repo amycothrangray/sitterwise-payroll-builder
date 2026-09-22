@@ -39,6 +39,7 @@ from .rules import Rules, RulesError
 from .run import (build_run, half_month_periods, period_label, suggest_period,
                   weeks_in)
 from .store import DATA_DIR, Store
+from .payday import checked_pay_date
 
 APP_ROOT = Path(__file__).resolve().parent.parent
 WEB_ROOT = APP_ROOT / "web"
@@ -127,6 +128,7 @@ def load_run(store: Store, run_id: str):
         import_result=result,
         recurring=recurring, late_tips=carried_tips, tip_problems=tip_problems,
     )
+    run.pay_date = date.fromisoformat(record["pay_date"]) if record.get("pay_date") else None
     return record, run, roster
 
 
@@ -192,6 +194,7 @@ def run_payload(store: Store, run_id: str) -> dict:
             "label": run.label,
             "period_start": run.period_start.isoformat(),
             "period_end": run.period_end.isoformat(),
+            "pay_date": run.pay_date.isoformat() if run.pay_date else "",
             "status": record["status"],
             "created_at": record["created_at"],
             "finalized_at": record["finalized_at"],
@@ -703,6 +706,17 @@ class Handler(BaseHTTPRequestHandler):
                 _import_cache.clear()
             return self._json({"ok": True})
 
+        match = re.fullmatch(r"/api/runs/([0-9a-f]+)/pay-date", path)
+        if match:
+            data = self._json_body()
+            if store.get_run(match.group(1)) is None:
+                raise ApiError("That payroll run no longer exists.", 404)
+            try:
+                store.set_pay_date(match.group(1), data.get('pay_date'))
+            except ValueError as exc:
+                raise ApiError(str(exc))
+            return self._json({"ok": True})
+
         match = re.fullmatch(r"/api/runs/([0-9a-f]+)/entered", path)
         if match:
             data = self._json_body()
@@ -911,6 +925,11 @@ class Handler(BaseHTTPRequestHandler):
         if end < start:
             raise ApiError("The pay period ends before it starts.")
 
+        if data.get('pay_date') is not None:
+            try:
+                checked_pay_date(data['pay_date'], end)
+            except ValueError as exc:
+                raise ApiError(str(exc))
         rules = Rules.load()
         result = _cached_import(source, rules)
         late_tips.observe_export(store, result)
@@ -938,7 +957,7 @@ class Handler(BaseHTTPRequestHandler):
         run_id = store.create_run(
             period_label(start, end), start, end, rules.snapshot(),
             data.get("source_filename") or source.name,
-            result.source_sha256, str(source))
+            result.source_sha256, str(source), pay_date=data.get("pay_date"))
         late_tips.for_run(store, store.get_run(run_id))
         return self._json({"ok": True, "run_id": run_id})
 

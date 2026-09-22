@@ -12,6 +12,8 @@ The checks are saved for this week and start fresh next week.
 1. **Upload bookings.** Choose your Sitterwise CSV or Excel export, then the pay week.
    Use a fresh export that includes last week's bookings, so late tips are found.
    At month-end, upload both months together.
+   Check **Pay date** against OnPay. New weeks suggest the following Friday;
+   change it if needed. The date is saved and printed on the breakdowns.
 2. **Download OnPay CSV.** Import it once into that pay week in OnPay. Compare the
    app's people, hours, and total with OnPay before continuing.
 3. **Share caregiver breakdowns.** Download caregiver PDFs and unzip the folder.
@@ -20,7 +22,7 @@ The checks are saved for this week and start fresh next week.
    **HR → Files**, enables **Employee Viewable**, and checks the saved document.
    It then adds one short paycheck memo: “Your payroll breakdown is in OnPay >
    Menu > My Files.” You review and submit payroll in OnPay.
-   If any pay changes, download a fresh folder and copy the task again.
+   If any pay or the pay date changes, download a fresh folder and copy the task again.
 4. **CalSavers.** Directly below the caregiver breakdowns step, upload the OnPay Payroll
    Register PDF after reviewing and submitting payroll in OnPay. Enter the
    verified contributions in CalSavers. Select **Mark this week finished** in
@@ -93,5 +95,7 @@ does not upload anything, mark tips paid or submit payroll.
 
 Download PDFs for a finished payroll from its record. If its reconstructed totals
 no longer agree with the saved record, the app stops the download for review.
+Older records have no assumed payday; enter their actual check date if you want
+it printed on the PDFs. This does not reopen payroll or change paid amounts.
 Manual changes made only in OnPay must also be reflected in the payroll app if
 they are to appear in its PDFs; Cowork stops if those totals do not match.

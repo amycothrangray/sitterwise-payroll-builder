@@ -3,7 +3,7 @@
    file can be read straight through if anyone ever needs to check it. */
 
 const S = { view: 'home', runId: null, run: null, home: null, roster: null,
-            settings: null, entryIndex: 0, focusCaregiver: null, filter: 'all' };
+            settings: null, entryIndex: 0, focusCaregiver: null, filter: 'all', payDateSaving: false };
 
 /* ---------- helpers ---------- */
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -32,6 +32,7 @@ document.addEventListener('click', async event => {
   const url = new URL(link.href, location.href);
   if (url.origin !== location.origin || !url.pathname.startsWith('/api/')) return;
   event.preventDefault();
+  if (S.payDateSaving) { toast('Saving the pay date. Please try again in a moment.'); return; }
   try {
     const response = await authenticatedFetch(url.href);
     if (!response.ok) {
@@ -189,6 +190,7 @@ function finishedPayrollView() {
     <div class="pagehead"><h1>${esc(run.label)}</h1><p class="sub">Finished and locked</p></div>
     <section class="card">
       <h2>Payroll record</h2>
+      ${payDateField(run)}
       <p class="finished-total">${money(totals.total_paid)}</p>
       <p>${plural(totals.caregivers, 'person', 'people')} · ${plural(totals.jobs, 'booking', 'bookings')}</p>
       <p class="muted">This week is marked finished in the app. Its checks are kept below for reference.</p>
@@ -221,7 +223,8 @@ VIEWS.payroll = () => {
     <div class="pagehead"><h1>${esc(r.run.label)}</h1><p class="sub">${r.run.locked ? 'Saved payroll record' : 'Your payroll in four steps'}</p></div>
     ${r.run.locked ? '<div class="banner notes">This week is marked finished in the app. Do not import it again if it has already been paid in OnPay.</div>' : ''}
     <section class="card flow-step"><span class="step-number">1</span><div class="step-body">
-      <h2>Bookings uploaded</h2><p>${r.totals.caregivers} people · ${plural(r.totals.jobs, 'booking', 'bookings')} · <strong>${money(r.totals.total_paid)}</strong> before taxes</p>
+      <h2>Bookings uploaded</h2>
+      ${payDateField(r.run)}<p>${r.totals.caregivers} people · ${plural(r.totals.jobs, 'booking', 'bookings')} · <strong>${money(r.totals.total_paid)}</strong> before taxes</p>
       ${(r.late_tips || []).length ? `<p class="muted">Included automatically: ${money(r.late_tips.reduce((sum,t) => sum + num(t.amount), 0))} in late tips from previously paid bookings.</p>` : ''}
       ${recurring.length ? `<p class="muted">Weekly and scheduled pay included: ${esc(recurring.join(' · '))}.</p>` : ''}
       <a href="#/home">Start a different week</a>
@@ -248,6 +251,27 @@ VIEWS.payroll = () => {
     ${!r.run.locked ? `<div class="finish-row"><p>After submitting this payroll in OnPay and checking the reminders above:</p><button class="btn" onclick="finishSimplePayroll()" ${blocked || !r.summary.can_finalize || !(r.checklist || []).every(i => i.checked) ? 'disabled' : ''}>Mark this week finished</button></div>` : ''}
   </div>`;
 };
+
+function payDateField(run) {
+  return `<label class="field" style="max-width:240px;margin:12px 0"><span>Pay date — match OnPay</span>
+    <input type="date" id="pay-date" aria-label="Pay date" min="${esc(run.period_end || '')}"
+      value="${esc(run.pay_date || '')}" onchange="savePayDate(this.value)"></label>
+    ${run.pay_date ? '' : '<p class="muted">Enter the actual check date to include it on these PDFs.</p>'}`;
+}
+
+async function savePayDate(value) {
+  if (S.payDateSaving) return;
+  S.payDateSaving = true;
+  const field = $('#pay-date'); if (field) field.disabled = true;
+  try {
+    await post(`/api/runs/${S.runId}/pay-date`, {pay_date:value});
+    await refreshRun();
+    toast('Pay date saved. Use fresh PDFs and a fresh Cowork task if you already downloaded them.');
+  } catch(e) {
+    toast(e.message, true);
+    if (field) { field.value = S.run.run.pay_date || ''; field.disabled = false; }
+  } finally { S.payDateSaving = false; }
+}
 
 function weeklyChecklist(r) {
   const waiting = r.waiting_notes || [], applied = r.applied_notes || [];
@@ -277,6 +301,7 @@ function confirmHistoricalDownload() {
   return !S.run.run.locked || confirm('This payroll is marked finished. Download a copy for your records? Do not import it again if OnPay has already paid it.');
 }
 async function copyNotesTask(button) {
+  if (S.payDateSaving) { toast('Saving the pay date. Please try again in a moment.'); return; }
   try {
     const res = await authenticatedFetch(`/api/runs/${S.runId}/export/onpay_notes`);
     if (!res.ok) throw new Error('Could not load the task. Check the payroll reminders and try again.');
