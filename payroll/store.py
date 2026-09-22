@@ -54,7 +54,8 @@ CREATE TABLE IF NOT EXISTS runs (
     totals_snapshot TEXT,
     tips_recorded INTEGER NOT NULL DEFAULT 0,
     late_tips_snapshot TEXT NOT NULL DEFAULT '[]',
-    tip_export_snapshot TEXT
+    tip_export_snapshot TEXT,
+    checklist_state TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS paid_bookings (
@@ -188,7 +189,8 @@ class Store:
         """
         wanted = {"runs": {"tips_recorded": "INTEGER NOT NULL DEFAULT 0",
                            "late_tips_snapshot": "TEXT NOT NULL DEFAULT '[]'",
-                           "tip_export_snapshot": "TEXT"},
+                           "tip_export_snapshot": "TEXT",
+                           "checklist_state": "TEXT NOT NULL DEFAULT '{}'"},
                   "roster": {"onpay_name": "TEXT DEFAULT ''",
                              "onpay_rate": "TEXT DEFAULT ''",
                              "onpay_pay_type": "TEXT DEFAULT ''",
@@ -291,7 +293,7 @@ class Store:
                 if json.loads(row['details'])['kind'] == 'late':
                     self.db.execute("UPDATE tip_updates SET claimed_run_id=? WHERE booking_id=?", (run_id, row['booking_id']))
             self.db.execute(
-                "UPDATE runs SET status='open', finalized_at=NULL, tips_recorded=0, late_tips_snapshot='[]', tip_export_snapshot=NULL WHERE id=?",
+                "UPDATE runs SET status='open', finalized_at=NULL, tips_recorded=0, late_tips_snapshot='[]', tip_export_snapshot=NULL, checklist_state='{}' WHERE id=?",
                 (run_id,))
             self.db.execute("DELETE FROM paid_bookings WHERE run_id=?", (run_id,))
             self.db.execute("DELETE FROM tip_payments WHERE run_id=?", (run_id,))

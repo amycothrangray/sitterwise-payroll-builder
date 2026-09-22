@@ -149,7 +149,7 @@ VIEWS.more = () => `
   <div class="tools-grid">
     <button class="card tool" onclick="go('settings')"><h2>Settings & backup</h2><p>Weekly payments, payroll rules, and moving to another Mac.</p></button>
     <button class="card tool" onclick="go('roster')"><h2>OnPay connections</h2><p>Employee names and import identifiers.</p></button>
-    <button class="card tool" onclick="go('notes')"><h2>Pay changes</h2><p>Extra payments and corrections for a future payroll.</p></button>
+    <button class="card tool" onclick="go('notes')"><h2>Odds & Ends</h2><p>Extra payments, reminders, and corrections for a future payroll.</p></button>
     ${S.run ? [['check','Payroll checks'],['cards','Caregiver details'],['reconcile','Reconciliation'],['exports','All reports'],['onpay','Manual entry']].map(([key,label]) =>
       `<button class="card tool" onclick="go('${key}')"><h2>${label}</h2></button>`).join('') : ''}
   </div>`;
@@ -224,7 +224,7 @@ VIEWS.payroll = () => {
       ${recurring.length ? `<p class="muted">Weekly and scheduled pay included: ${esc(recurring.join(' · '))}.</p>` : ''}
       <a href="#/home">Start a different week</a>
     </div></section>
-    ${waiting.length ? `<div class="banner warn"><div><strong>${plural(waiting.length,'saved pay change needs','saved pay changes need')} attention</strong><p>Resolve these before downloading so they are not missed.</p><button class="btn" onclick="go('check')">Review pay changes</button></div></div>` : ''}
+    ${weeklyChecklist(r)}
     ${stops.length ? `<section class="card"><h2>Fix before downloading</h2>${stops.map(findingCard).join('')}<button class="btn" onclick="go('check')">Open payroll checks</button></section>` : ''}
     ${topics.length ? `<section class="card"><h2>${plural(topics.length, 'question', 'questions')} before paying</h2><p class="muted">Open a question to see the people and bookings involved.</p>${topics.map(reviewTopicCard).join('')}</section>` : ''}
     <section class="card flow-step"><span class="step-number">2</span><div class="step-body">
@@ -232,15 +232,39 @@ VIEWS.payroll = () => {
       ${blocked ? `<p>There is something to fix before this file is complete.</p><ul>${(item.problems || []).filter(p => p.blocking).map(p => `<li><strong>${esc(p.caregiver)}</strong> ${esc(p.problem)}</li>`).join('')}</ul><button class="btn" onclick="go('roster')">OnPay connections</button>` : `<p>Import this file once into the matching week in OnPay.</p><a class="btn btn-primary btn-huge" href="/api/runs/${S.runId}/export/onpay_import" onclick="return confirmHistoricalDownload()">Download OnPay CSV</a><p class="file-totals">After importing, check: <strong>${item.summary.people} people · ${hrs(item.summary.hours)} hours · ${money(item.summary.total)}</strong></p>`}
     </div></section>
     <section class="card flow-step"><span class="step-number">3</span><div class="step-body">
-      <h2>Give ChatGPT Work the notes</h2><p>After the OnPay import, copy this task into ChatGPT Work. It includes every paycheck note and the totals to verify.</p>
-      <button class="btn btn-primary btn-huge" onclick="copyNotesTask(this)" ${blocked ? 'disabled' : ''}>Copy notes for ChatGPT Work</button>
-      <p class="muted" style="margin-top:12px">Use Work locally and select your signed-in OnPay browser with @Chrome. ChatGPT saves and checks the notes; you review and submit payroll in OnPay.</p>
+      <h2>Give Claude Cowork the notes</h2><p>After the OnPay import, copy this task into Claude Cowork. It includes every paycheck note and the totals to verify.</p>
+      <button class="btn btn-primary btn-huge" onclick="copyNotesTask(this)" ${blocked ? 'disabled' : ''}>Copy notes for Claude Cowork</button>
+      <p class="muted" style="margin-top:12px">Use Claude Cowork with browser access to your signed-in OnPay session. Cowork saves and checks the notes; you review and submit payroll in OnPay.</p>
       <details><summary>Need a file instead?</summary><p><a href="/api/runs/${S.runId}/export/onpay_notes">Download the notes task</a></p></details>
       <div id="notes-copy-fallback"></div>
     </div></section>
-    ${!r.run.locked ? `<div class="finish-row"><p>After you have submitted this payroll in OnPay:</p><button class="btn" onclick="finishSimplePayroll()" ${blocked || !r.summary.can_finalize ? 'disabled' : ''}>Mark this week finished</button></div>` : ''}
+    ${!r.run.locked ? `<div class="finish-row"><p>Check the reminders above, then submit this payroll in OnPay.</p><button class="btn" onclick="finishSimplePayroll()" ${blocked || !r.summary.can_finalize || !(r.checklist || []).every(i => i.checked) ? 'disabled' : ''}>Mark this week finished</button></div>` : ''}
   </div>`;
 };
+
+function weeklyChecklist(r) {
+  const waiting = r.waiting_notes || [], applied = r.applied_notes || [];
+  return `<section class="card" id="weekly-checklist"><h2>This week’s reminders</h2>
+    <p class="muted">Check these before submitting in OnPay. Checking a box records your review; it does not add pay.</p>
+    ${(r.checklist || []).map(item => `<div style="margin:14px 0">
+      <label><input type="checkbox" ${item.checked ? 'checked' : ''} ${!item.available ? 'disabled' : ''}
+        onchange="checkWeeklyReminder(${jsArg(item.key)}, this.checked)"> <strong>${esc(item.title)}</strong></label>
+      <p class="muted" style="margin:4px 0 0 24px">${esc(item.detail)}</p></div>`).join('')}
+    ${waiting.length ? `<strong>Waiting Odds & Ends entries</strong><ul>${waiting.map(n => `<li>
+      ${esc(n.caregiver_name || 'General reminder')} · ${esc(n.kind_label)} ${num(n.amount) ? noteAmount(n) : ''}
+      ${n.detail ? `<span class="muted">— ${esc(n.detail)}</span>` : ''}
+      ${n.problem ? `<p>${esc(n.problem)}</p>` : ''}</li>`).join('')}</ul>
+      ${waiting.some(n => n.applies_itself && !n.problem) ? '<button class="btn" onclick="applyNotes()">Add eligible entries to payroll</button>' : ''}
+      <p class="muted">Handle other entries in OnPay, then mark them done in Odds & Ends.</p>` : `<p class="muted">${applied.length ? plural(applied.length, 'Odds & Ends entry included', 'Odds & Ends entries included') + ' in this payroll.' : 'No waiting entries saved in the app. Remember to check your external Odds & Ends list too.'}</p>`}
+    <a class="btn btn-sm" href="#/notes">Open Odds & Ends</a>
+    <a class="btn btn-sm" href="#/settings">Scheduled pay settings</a>
+  </section>`;
+}
+
+async function checkWeeklyReminder(key, checked) {
+  try { await post(`/api/runs/${S.runId}/checklist`, {key, checked}); await refreshRun(); }
+  catch(e) { toast(e.message, true); await refreshRun(); }
+}
 
 function confirmHistoricalDownload() {
   return !S.run.run.locked || confirm('This payroll is marked finished. Download a copy for your records? Do not import it again if OnPay has already paid it.');
@@ -250,7 +274,7 @@ async function copyNotesTask(button) {
     const res = await authenticatedFetch(`/api/runs/${S.runId}/export/onpay_notes`);
     if (!res.ok) throw new Error('Could not load the notes. Please try again.');
     const text = (await res.text()).replace(/^\uFEFF/, '');
-    try { await navigator.clipboard.writeText(text); toast('Copied. Paste into ChatGPT Work.'); }
+    try { await navigator.clipboard.writeText(text); toast('Copied. Paste into Claude Cowork.'); }
     catch (_) {
       $('#notes-copy-fallback').innerHTML = '<p>Select and copy the task below:</p><textarea aria-label="Notes task to copy" rows="8"></textarea>';
       const field = $('#notes-copy-fallback textarea'); field.value = text; field.focus(); field.select();
@@ -1098,13 +1122,13 @@ VIEWS.exports = () => `
     <div class="spread">
       <div>
         <h3>CalSavers contributions</h3>
-        <p class="muted" style="margin:4px 0 0">After payroll is submitted, drop OnPay's
-          payroll register here and this reads out who is owed a CalSavers contribution,
+        <p class="muted" style="margin:4px 0 0">After payroll is submitted, choose Save as PDF
+          on OnPay's Payroll Register report and upload that PDF here. This reads each CalSavers contribution,
           ready to type into the CalSavers portal. It has to be sent within seven days
           of the pay date.</p>
       </div>
-      <button class="btn" onclick="$('#calsaversfile').click()">Read the register</button>
-      <input type="file" id="calsaversfile" accept=".pdf" hidden onchange="readCalSavers(this)">
+      <button class="btn" onclick="$('#calsaversfile').click()">Upload register PDF</button>
+      <input type="file" id="calsaversfile" accept=".pdf,application/pdf" hidden onchange="readCalSavers(this)">
     </div>
     <div id="calsavers"></div>
   </div>`;
@@ -1441,6 +1465,8 @@ async function readCalSavers(input) {
           Nobody has a CalSavers deduction on this payroll, so there is nothing to send.</div>`)}`;
   } catch (e) {
     $('#calsavers').innerHTML = `<div class="banner bad" style="margin-top:12px">${esc(e.message)}</div>`;
+  } finally {
+    input.value = '';
   }
 }
 
@@ -1678,7 +1704,7 @@ VIEWS.notes = () => {
   const done = all.filter(n => n.status !== 'open');
   return `
   <div class="pagehead">
-    <h1>Payroll notes</h1>
+    <h1>Odds & Ends</h1>
     <p class="sub">Anything to remember on a payroll. Write it down when you notice it;
       the payroll it belongs to picks it up.</p>
   </div>

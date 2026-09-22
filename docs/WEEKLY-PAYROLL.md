@@ -2,13 +2,20 @@
 
 Open Sitterwise Payroll. GitHub Desktop and Terminal are not part of payroll.
 
+The main payroll screen has **This week’s reminders** for Odds & Ends and each
+scheduled payment. Review the external Odds & Ends list too, even if no entries
+are saved in the app. Apply eligible saved entries there; handle other entries
+in OnPay and mark them done in Odds & Ends. After importing, verify the scheduled
+amounts in OnPay and check the boxes. Do not add pay that is already included.
+The checks are saved for this week and start fresh next week.
+
 1. **Upload bookings.** Choose your Sitterwise CSV or Excel export, then the pay week.
    Use a fresh export that includes last week's bookings, so late tips are found.
    At month-end, upload both months together.
 2. **Download OnPay CSV.** Import it once into that pay week in OnPay. Compare the
    app's people, hours, and total with OnPay before continuing.
-3. **Copy notes for ChatGPT Work.** Paste into a local Work task and select the
-   browser where OnPay is signed in. It will save and check paycheck memos.
+3. **Copy notes for Claude Cowork.** Paste into Claude Cowork with browser access
+   to the session where OnPay is signed in. It will save and check paycheck memos.
 4. Review the payroll and submit it yourself in OnPay. Back in this app, select
    **Mark this week finished**. Downloading or copying notes does not submit payroll.
 
@@ -37,16 +44,27 @@ unapplied pay change must be fixed before downloading a complete CSV. A warning
 about a genuine pay question still needs review. The app cannot guarantee that
 OnPay settings or source bookings will never change.
 
-For the notes task, ChatGPT Work needs browser access and an OnPay login.
+For the notes task, Claude Cowork needs browser access and an OnPay login.
 The task contains private paycheck data, and copying it alone does not send it.
-It tells Work to verify identity and pay, save notes, read them back, and leave
+It tells Cowork to verify identity and pay, save notes, read them back, and leave
 payroll unsubmitted. Existing different notes are preserved pending review.
 
-[ChatGPT Work local tasks](https://learn.chatgpt.com/docs/get-started-with-work)
-and [browser setup](https://learn.chatgpt.com/docs/chrome-extension).
 
 ## History and moving Macs
 
 Use **More → Settings & backup → Download private history file**. Restore it
 once into an empty app on the receiving Mac. Share this file privately; it is
 separate from the downloadable software. Use only one working payroll copy.
+
+## CalSavers
+
+After submitting payroll in OnPay, open its Payroll Register report and choose
+**Save as PDF**. In this app, open **Reports → CalSavers → Upload register PDF**.
+The reader checks the employee contributions against the register total before
+showing amounts to enter in CalSavers. This upload accepts PDF, not spreadsheets.
+
+## Updating Lissa’s app
+
+Quit Sitterwise Payroll, open the new installer, and replace the app in
+Applications. Open it again; current history and settings stay on this Mac.
+Do not restore an older history file when updating an existing installation.

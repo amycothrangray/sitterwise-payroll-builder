@@ -122,6 +122,32 @@ class LocalAccess(unittest.TestCase):
         self.assertIn('attachment;',headers['Content-Disposition'])
         self.assertEqual(Path(info['source_path']).stat().st_mode & 0o777,0o600)
 
+    def test_calsavers_pdf_upload_extracts_and_reconciles_real_pdf(self):
+        from tests.test_calsavers import register_pdf, register, person
+        pdf = register_pdf(register(person('Sample Worker','77.33','28.52')))
+        status, body, _ = self.request('/api/calsavers','POST',pdf,{'X-Filename':'Payroll Register.PDF'})
+        self.assertEqual(status,200,body)
+        found = json.loads(body)
+        self.assertEqual(found['people'],[{'name':'Sample Worker','amount':'28.52'}])
+        self.assertTrue(found['ok']); self.assertEqual(found['pay_date'],'9/11/2026')
+        self.assertEqual(self.request('/api/upload','POST',pdf,{'X-Filename':'register.pdf'})[0],400)
+
+    def test_calsavers_wrong_file_type_gets_pdf_instructions(self):
+        for name in ('register.csv','register.xls','register.xlsx'):
+            status, body, _ = self.request('/api/calsavers','POST',b'not pdf',{'X-Filename':name})
+            self.assertEqual(status,400)
+            self.assertIn('Save as PDF',body.decode())
+            self.assertFalse(self.uploads.exists())
+
+    def test_calsavers_invalid_encrypted_and_blank_pdfs_are_actionable(self):
+        from tests.test_calsavers import register_pdf
+        for data, expected in [(b'broken','could not be read'),
+                               (register_pdf('Sample',password='test-only'),'password-protected'),
+                               (register_pdf(''),'no readable text')]:
+            status,body,_ = self.request('/api/calsavers','POST',data,{'X-Filename':'register.pdf'})
+            self.assertEqual(status,400,body)
+            self.assertIn(expected,body.decode())
+
     def test_negative_duplicate_chunked_and_oversized_lengths_are_rejected(self):
         for extra, expected in [('Content-Length: -1\r\n',400),
                                 ('Content-Length: 0\r\nContent-Length: 1\r\n',400),

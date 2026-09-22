@@ -16,6 +16,19 @@ const context = vm.createContext({
 });
 // The only startup call renders asynchronously; suppress it in the isolated harness.
 vm.runInContext(source.replace(/^route\(\);$/m, ''), context);
+const reminders = vm.runInContext(`weeklyChecklist({
+  checklist:[{key:"recurring:test",title:"Verify Test Administrator: $150.00 in OnPay",
+    detail:"Check after importing.",available:true,checked:false}],
+  waiting_notes:[{caregiver_name:"<img src=x>",kind_label:"Extra pay",amount:"25.00",detail:"Training"}],
+  applied_notes:[]
+})`, context);
+assert.ok(reminders.includes('This week’s reminders'));
+assert.ok(reminders.includes('Odds &amp; Ends') || reminders.includes('Odds & Ends'));
+assert.ok(reminders.includes('$150.00'));
+assert.ok(!reminders.includes('<img'));
+assert.ok(source.includes('Copy notes for Claude Cowork'));
+assert.ok(!source.includes('ChatGPT Work'));
+assert.ok(source.includes('accept=".pdf,application/pdf"'));
 const decode = s => s.replace(/&(quot|#39|lt|gt|amp);/g, (_, k) =>
   ({quot:'"','#39':"'",lt:'<',gt:'>',amp:'&'}[k]));
 for (const value of ["O'Connor", "');globalThis.compromised=true;//", '&quot;);globalThis.compromised=true;//', '<img src=x onerror=alert(1)>', 'a\\b\n"']) {
