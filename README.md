@@ -255,6 +255,10 @@ The app makes one Sitterwise-branded PDF per caregiver, showing jobs, hours,
 rates, minimum-pay top-ups, overtime, tips, bonuses, reimbursements and scheduled
 pay. It uses the same calculated figures as the CSV; historical runs keep their
 saved rules. PDFs are generated locally and contain only that caregiver’s data.
+New payrolls suggest the following Friday as the pay date. Match **Pay date** to
+OnPay before downloading: it appears on every PDF and in Cowork’s task. You can
+change it for a holiday or another check date without changing any pay. Older
+payroll records leave this blank until you enter their actual check date.
 
 Cowork’s task verifies identities and totals, uploads each individual file under
 **Workers → employee → HR → Files**, enables **Employee Viewable**, and checks the
@@ -263,7 +267,7 @@ Files.” Existing different documents and memos are preserved for review. Payro
 remains unsubmitted for the operator. Never put private breakdowns in Company
 Documents, a shared all-workers folder, or another worker’s profile.
 
-If pay changes, download the folder and task again. Amounts changed only in
+If pay or the pay date changes, download the folder and task again. Amounts changed only in
 OnPay also need to be reflected in the app to appear in these breakdowns.
 See [the weekly guide](docs/WEEKLY-PAYROLL.md).
 

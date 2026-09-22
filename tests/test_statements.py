@@ -116,6 +116,20 @@ class Statements(unittest.TestCase):
                 other='Other Worker' if person['caregiver']==first.name else first.name
                 self.assertNotIn(other,text)
 
+    def test_long_breakdown_keeps_extra_heading_with_its_content(self):
+        rows=[self.row('3.75',day=3,lifesaver='0'),self.row('3.5',day=4),
+              self.row('4',day=5,rate='28'),self.row('5',day=7,lifesaver='0'),
+              self.row('6.5',day=7,lifesaver='0'),self.row('8.75',day=8,lifesaver='0')]
+        rows[4].update({'Start Time':'16:00','End Time':'22:30'})
+        run,_=self.run_rows(rows)
+        from pypdf import PdfReader
+        reader=PdfReader(io.BytesIO(statements.render_pdf(statements.statement_data(run,run.caregivers[0]))))
+        self.assertGreater(len(reader.pages),1)
+        for page in reader.pages:
+            text=page.extract_text()
+            if 'Other amounts included' in text:
+                self.assertIn('Lifesaver bonus overtime premium',text)
+
     def test_filename_blocks_path_and_changes_with_money(self):
         run,_=self.example();c=run.caregivers[0];c.name='../../Bad/Name\\Name'
         data=statements.statement_data(run,c);name=statements.filename_for(data)

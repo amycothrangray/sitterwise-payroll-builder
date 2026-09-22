@@ -141,6 +141,7 @@ class PayrollRun:
     period_jobs: list[Job]
     excluded_jobs: list[Job]
     late_tips: list[dict] = field(default_factory=list)
+    pay_date: date | None = None
 
     @property
     def label(self) -> str:

@@ -20,7 +20,7 @@ from .paths import APP_ROOT
 
 ZERO = Decimal('0')
 MEMO = 'Your payroll breakdown is in OnPay > Menu > My Files.'
-SCHEMA = 1
+SCHEMA = 2
 _FONT_LOCK = threading.Lock()
 
 
@@ -99,6 +99,7 @@ def statement_data(run, caregiver):
         raise ValueError('Caregiver breakdown totals do not match payroll. Review this payroll before sharing PDFs.')
     return dict(schema=SCHEMA, caregiver=clean(c.name), caregiver_key=clean(c.key), caregiver_id=clean(c.caregiver_id),
         start=run.period_start.isoformat(), end=run.period_end.isoformat(), period=run.label,
+        pay_date=run.pay_date.isoformat() if run.pay_date else "",
         jobs=jobs, extras=extras, hours=str(c.hours_worked), minimum_hours=str(c.guarantee_hours),
         ot_hours=str(c.ot_hours), dt_hours=str(c.dt_hours), straight=str(c.straight_pay),
         minimum_pay=str(c.guarantee_pay), ot=str(c.ot_premium), dt=str(c.dt_premium),
@@ -133,11 +134,13 @@ def render_pdf(data):
     normal = ParagraphStyle('Body',fontName='Poppins',fontSize=8.5,leading=13,textColor=colors.HexColor(navy),spaceAfter=4)
     small = ParagraphStyle('Small',parent=normal,fontSize=7.5,leading=11)
     title = ParagraphStyle('Title',parent=normal,fontName='PoppinsBold',fontSize=21,leading=28,spaceAfter=5)
-    heading = ParagraphStyle('Heading',parent=normal,fontName='PoppinsSemi',fontSize=11,leading=17,spaceBefore=9,spaceAfter=6)
+    heading = ParagraphStyle('Heading',parent=normal,fontName='PoppinsSemi',fontSize=11,leading=17,spaceBefore=9,spaceAfter=6,keepWithNext=True)
     def p(text, style=normal):
         return Paragraph(escape(clean(text)).replace('\n','<br/>'),style)
     def rich(parts, style=small):
         return Paragraph('<br/>'.join(escape(clean(t)) for t in parts if t),style)
+    payday = date.fromisoformat(data['pay_date']).strftime('%b %d, %Y') if data.get('pay_date') else ''
+    period_line = data['period'] + (f' | Pay date {payday}' if payday else '')
     output = io.BytesIO()
     doc = SimpleDocTemplate(output,pagesize=(612,792),leftMargin=38,rightMargin=38,topMargin=88,bottomMargin=56,
         title=f"{data['caregiver']} - Payroll breakdown - {data['period']}",author='Sitterwise, Inc.')
@@ -149,12 +152,12 @@ def render_pdf(data):
         # The official logo stays unchanged and is embedded without network access.
         canvas.drawInlineImage(str(APP_ROOT/'branding/sitterwise-logo.jpg'),38,733,width=152.25,height=29.25)
         canvas.setFont('PoppinsSemi',9); canvas.setFillColor(colors.HexColor(navy)); canvas.drawRightString(574,746,'PAYROLL BREAKDOWN')
-        canvas.setFont('Poppins',7); canvas.drawRightString(574,733,data['period'])
+        canvas.setFont('Poppins',7); canvas.drawRightString(574,733,period_line)
         canvas.setStrokeColor(colors.HexColor('#E3EAEE')); canvas.line(38,46,574,46)
         canvas.setFont('Poppins',6.8); canvas.drawString(38,32,'For job details. Your OnPay pay stub shows taxes, deductions and take-home pay.')
         canvas.drawRightString(574,21,f'Page {_doc.page}')
         canvas.restoreState()
-    story=[p(data['caregiver'],title),p('Pay period: '+data['period'])]
+    story=[p(data['caregiver'],title),p('Pay period: '+period_line)]
     hero=Table([[p('TOTAL BEFORE TAXES & DEDUCTIONS',small),p(f"{len(data['jobs'])} jobs · {Decimal(data['hours']):.2f} hours worked",small)],
         [p(dollars(data['total']),title),p('Includes reimbursements of '+dollars(data['reimbursements']),small)]],colWidths=[286,250])
     hero.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#E8F5F5')),('BOX',(0,0),(-1,-1),.5,colors.HexColor(teal)),('LEFTPADDING',(0,0),(-1,-1),12),('TOPPADDING',(0,0),(-1,0),10),('BOTTOMPADDING',(0,-1),(-1,-1),8),('VALIGN',(0,0),(-1,-1),'TOP')]))
@@ -220,7 +223,7 @@ def create_archive(run, roster):
                 onpay_employee_id=entry.onpay_employee_id if entry else '',filename=name,
                 sha256=hashlib.sha256(pdf).hexdigest(),total=data['total']))
         archive.writestr('manifest.json',json.dumps(dict(period_start=run.period_start.isoformat(),
-            period_end=run.period_end.isoformat(),caregivers=manifest),ensure_ascii=False,indent=2))
+            period_end=run.period_end.isoformat(),pay_date=run.pay_date.isoformat() if run.pay_date else "",caregivers=manifest),ensure_ascii=False,indent=2))
         archive.writestr('READ ME.txt','PRIVATE PAYROLL FILES\n\nUnzip this folder and give it to Claude Cowork with the task copied from the payroll app.\n'
             'Only each caregiver’s own PDF belongs in their OnPay employee Files. Enable Employee Viewable.\n'
             'Never upload this ZIP, manifest, or a combined PDF to Company Documents or an employee profile.\n'
