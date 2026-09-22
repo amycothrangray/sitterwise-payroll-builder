@@ -14,16 +14,21 @@ The checks are saved for this week and start fresh next week.
    At month-end, upload both months together.
 2. **Download OnPay CSV.** Import it once into that pay week in OnPay. Compare the
    app's people, hours, and total with OnPay before continuing.
-3. **Copy notes for Claude Cowork.** Paste into Claude Cowork with browser access
-   to the session where OnPay is signed in. It will save and check paycheck memos.
-4. **CalSavers.** Directly below the Cowork notes step, upload the OnPay Payroll
+3. **Share caregiver breakdowns.** Download caregiver PDFs and unzip the folder.
+   Give that folder to Claude Cowork, then use **Copy task for Claude Cowork** and
+   paste the task. Cowork verifies pay, uploads each PDF to that employee’s
+   **HR → Files**, enables **Employee Viewable**, and checks the saved document.
+   It then adds one short paycheck memo: “Your payroll breakdown is in OnPay >
+   Menu > My Files.” You review and submit payroll in OnPay.
+   If any pay changes, download a fresh folder and copy the task again.
+4. **CalSavers.** Directly below the caregiver breakdowns step, upload the OnPay Payroll
    Register PDF after reviewing and submitting payroll in OnPay. Enter the
    verified contributions in CalSavers. Select **Mark this week finished** in
    this app; CalSavers remains visible on the finished screen too.
    Downloading or copying notes does not submit payroll.
 
 Late tips on previously paid bookings are included automatically in the next
-payroll's Tips amount and paycheck notes. Only the unpaid increase is added;
+payroll's Tips amount and caregiver PDF. Only the unpaid increase is added;
 the booking's wages and hours are not paid again. Tips discovered after an
 OnPay CSV has been downloaded wait for the following payroll. Always mark a
 submitted week finished so the app knows which tips were paid.
@@ -47,9 +52,10 @@ unapplied pay change must be fixed before downloading a complete CSV. A warning
 about a genuine pay question still needs review. The app cannot guarantee that
 OnPay settings or source bookings will never change.
 
-For the notes task, Claude Cowork needs browser access and an OnPay login.
+For the PDF sharing task, Claude Cowork needs browser access and an OnPay login.
 The task contains private paycheck data, and copying it alone does not send it.
-It tells Cowork to verify identity and pay, save notes, read them back, and leave
+It tells Cowork to verify identity and pay, share only each person’s own PDF, save the short memo,
+read it back, and leave
 payroll unsubmitted. Existing different notes are preserved pending review.
 
 
@@ -62,7 +68,7 @@ separate from the downloadable software. Use only one working payroll copy.
 ## CalSavers
 
 After submitting payroll in OnPay, open its Payroll Register report and choose
-**Save as PDF**. On the main payroll screen, directly after the Cowork notes step,
+**Save as PDF**. On the main payroll screen, directly after the caregiver breakdowns step,
 choose **CalSavers → Upload register PDF**. It is also at the top of Reports.
 The reader checks the employee contributions against the register total before
 showing amounts to enter in CalSavers. This upload accepts PDF, not spreadsheets.
@@ -72,3 +78,20 @@ showing amounts to enter in CalSavers. This upload accepts PDF, not spreadsheets
 Quit Sitterwise Payroll, open the new installer, and replace the app in
 Applications. Open it again; current history and settings stay on this Mac.
 Do not restore an older history file when updating an existing installation.
+
+## Caregiver breakdowns
+
+Caregivers open OnPay’s menu and select **My Files**. Each PDF shows jobs, actual
+hours, job rates, minimum-pay top-ups, overtime premiums, Lifesaver bonuses, tips,
+reimbursements and any scheduled pay or adjustments. Taxes and take-home pay
+remain on the official OnPay pay stub. Saved older runs retain their saved rules.
+
+Never share the whole ZIP or manifest with a caregiver, and never use Company
+Documents or an all-workers folder for private payroll breakdowns. Existing
+different documents or memos are preserved for review. Downloading the folder
+does not upload anything, mark tips paid or submit payroll.
+
+Download PDFs for a finished payroll from its record. If its reconstructed totals
+no longer agree with the saved record, the app stops the download for review.
+Manual changes made only in OnPay must also be reflected in the payroll app if
+they are to appear in its PDFs; Cowork stops if those totals do not match.

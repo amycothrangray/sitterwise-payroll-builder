@@ -4,3 +4,6 @@ defusedxml>=0.7.1
 # Only for reading OnPay's payroll register on the
 # CalSavers step. Payroll runs without it.
 pypdf>=6.18.1
+
+# Branded caregiver PDF breakdowns
+reportlab>=4.4.9

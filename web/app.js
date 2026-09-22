@@ -194,7 +194,8 @@ function finishedPayrollView() {
       <p class="muted">This week is marked finished in the app. Its checks are kept below for reference.</p>
       <div class="row"><button class="btn btn-primary" onclick="go('home')">Start next payroll</button>
       <button class="btn" onclick="go('cards')">View pay details</button>
-      <button class="btn" onclick="go('exports')">Reports</button></div>
+      <button class="btn" onclick="go('exports')">Reports</button>
+      <a class="btn" href="/api/runs/${S.runId}/export/caregiver_pdfs">Download caregiver PDFs</a></div>
     </section>
     ${calSaversSection()}
     ${(topics.length || stops.length || notes.length) ? `<details class="card historical-checks">
@@ -233,10 +234,14 @@ VIEWS.payroll = () => {
       ${blocked ? `<p>There is something to fix before this file is complete.</p><ul>${(item.problems || []).filter(p => p.blocking).map(p => `<li><strong>${esc(p.caregiver)}</strong> ${esc(p.problem)}</li>`).join('')}</ul><button class="btn" onclick="go('roster')">OnPay connections</button>` : `<p>Import this file once into the matching week in OnPay.</p><a class="btn btn-primary btn-huge" href="/api/runs/${S.runId}/export/onpay_import" onclick="return confirmHistoricalDownload()">Download OnPay CSV</a><p class="file-totals">After importing, check: <strong>${item.summary.people} people · ${hrs(item.summary.hours)} hours · ${money(item.summary.total)}</strong></p>`}
     </div></section>
     <section class="card flow-step"><span class="step-number">3</span><div class="step-body">
-      <h2>Give Claude Cowork the notes</h2><p>After the OnPay import, copy this task into Claude Cowork. It includes every paycheck note and the totals to verify.</p>
-      <button class="btn btn-primary btn-huge" onclick="copyNotesTask(this)" ${blocked ? 'disabled' : ''}>Copy notes for Claude Cowork</button>
-      <p class="muted" style="margin-top:12px">Use Claude Cowork with browser access to your signed-in OnPay session. Cowork saves and checks the notes; you review and submit payroll in OnPay.</p>
-      <details><summary>Need a file instead?</summary><p><a href="/api/runs/${S.runId}/export/onpay_notes">Download the notes task</a></p></details>
+      <h2>Share caregiver breakdowns</h2>
+      <p>Download and unzip the PDFs. Give the folder and the copied task to Claude Cowork.</p>
+      ${blocked ? '<p class="muted">Finish the payroll checks above first.</p>' : `<a class="btn btn-primary btn-huge" href="/api/runs/${S.runId}/export/caregiver_pdfs">Download caregiver PDFs</a>`}
+      <button class="btn btn-huge" onclick="copyNotesTask(this)" ${blocked ? 'disabled' : ''}>Copy task for Claude Cowork</button>
+      <p class="muted" style="margin-top:12px">With browser access to OnPay, Cowork uploads each person’s PDF privately and adds this short paycheck note:</p>
+      <p><strong>Your payroll breakdown is in OnPay &gt; Menu &gt; My Files.</strong></p>
+      <p class="muted">Cowork checks the files and notes. You review and submit payroll in OnPay. If you change pay, download fresh PDFs and copy the task again.</p>
+      <details><summary>Need the task as a file?</summary><p><a href="/api/runs/${S.runId}/export/onpay_notes">Download the Cowork task</a></p></details>
       <div id="notes-copy-fallback"></div>
     </div></section>
     ${calSaversSection(true)}
@@ -274,11 +279,11 @@ function confirmHistoricalDownload() {
 async function copyNotesTask(button) {
   try {
     const res = await authenticatedFetch(`/api/runs/${S.runId}/export/onpay_notes`);
-    if (!res.ok) throw new Error('Could not load the notes. Please try again.');
+    if (!res.ok) throw new Error('Could not load the task. Check the payroll reminders and try again.');
     const text = (await res.text()).replace(/^\uFEFF/, '');
     try { await navigator.clipboard.writeText(text); toast('Copied. Paste into Claude Cowork.'); }
     catch (_) {
-      $('#notes-copy-fallback').innerHTML = '<p>Select and copy the task below:</p><textarea aria-label="Notes task to copy" rows="8"></textarea>';
+      $('#notes-copy-fallback').innerHTML = '<p>Select and copy the task below:</p><textarea aria-label="Cowork task to copy" rows="8"></textarea>';
       const field = $('#notes-copy-fallback textarea'); field.value = text; field.focus(); field.select();
     }
   } catch(e) { toast(e.message, true); }
@@ -299,7 +304,7 @@ VIEWS.home = () => {
   return `
   <div class="pagehead">
     <h1>Run payroll</h1>
-    <p class="sub">Upload bookings. Download payroll. Copy the notes.</p>
+    <p class="sub">Upload bookings. Download payroll. Share breakdowns.</p>
   </div>
 
   <div class="dropzone" id="drop">
@@ -1121,7 +1126,7 @@ function calSaversSection(numbered = false) {
     ${numbered ? '<span class="step-number">4</span>' : ''}
     <div class="step-body">
       <h2>CalSavers contributions</h2>
-      <p>${S.run?.run?.locked ? 'Open' : 'Once Cowork has saved the notes, review and submit payroll in OnPay. Then open'}
+      <p>${S.run?.run?.locked ? 'Open' : 'Once Cowork has shared the breakdowns, review and submit payroll in OnPay. Then open'}
         OnPay’s Payroll Register report, choose <strong>Save as PDF</strong>,
         and upload that PDF here.</p>
       <button class="btn btn-primary btn-huge" onclick="$('#calsaversfile').click()">Upload register PDF</button>
