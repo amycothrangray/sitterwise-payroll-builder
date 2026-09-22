@@ -196,6 +196,7 @@ function finishedPayrollView() {
       <button class="btn" onclick="go('cards')">View pay details</button>
       <button class="btn" onclick="go('exports')">Reports</button></div>
     </section>
+    ${calSaversSection()}
     ${(topics.length || stops.length || notes.length) ? `<details class="card historical-checks">
       <summary>Checks for this finished week</summary>
       <p class="muted">These are historical checks, not a new checklist for next week's payroll. Finishing a week does not mark each finding resolved.</p>
@@ -216,7 +217,7 @@ VIEWS.payroll = () => {
   const recurring = r.caregivers.flatMap(c => (c.adjustments || [])
     .filter(a => a.kind === 'recurring_pay').map(a => `${c.name}: ${money(a.new_value)}`));
   return `<div class="payroll-flow">
-    <div class="pagehead"><h1>${esc(r.run.label)}</h1><p class="sub">${r.run.locked ? 'Saved payroll record' : 'Your payroll in three steps'}</p></div>
+    <div class="pagehead"><h1>${esc(r.run.label)}</h1><p class="sub">${r.run.locked ? 'Saved payroll record' : 'Your payroll in four steps'}</p></div>
     ${r.run.locked ? '<div class="banner notes">This week is marked finished in the app. Do not import it again if it has already been paid in OnPay.</div>' : ''}
     <section class="card flow-step"><span class="step-number">1</span><div class="step-body">
       <h2>Bookings uploaded</h2><p>${r.totals.caregivers} people · ${plural(r.totals.jobs, 'booking', 'bookings')} · <strong>${money(r.totals.total_paid)}</strong> before taxes</p>
@@ -238,7 +239,8 @@ VIEWS.payroll = () => {
       <details><summary>Need a file instead?</summary><p><a href="/api/runs/${S.runId}/export/onpay_notes">Download the notes task</a></p></details>
       <div id="notes-copy-fallback"></div>
     </div></section>
-    ${!r.run.locked ? `<div class="finish-row"><p>Check the reminders above, then submit this payroll in OnPay.</p><button class="btn" onclick="finishSimplePayroll()" ${blocked || !r.summary.can_finalize || !(r.checklist || []).every(i => i.checked) ? 'disabled' : ''}>Mark this week finished</button></div>` : ''}
+    ${calSaversSection(true)}
+    ${!r.run.locked ? `<div class="finish-row"><p>After submitting this payroll in OnPay and checking the reminders above:</p><button class="btn" onclick="finishSimplePayroll()" ${blocked || !r.summary.can_finalize || !(r.checklist || []).every(i => i.checked) ? 'disabled' : ''}>Mark this week finished</button></div>` : ''}
   </div>`;
 };
 
@@ -1114,24 +1116,27 @@ async function unlockRun() {
 /* =====================================================================
    EXPORTS
    ===================================================================== */
+function calSaversSection(numbered = false) {
+  return `<section class="card ${numbered ? 'flow-step' : ''}" id="calsavers-step">
+    ${numbered ? '<span class="step-number">4</span>' : ''}
+    <div class="step-body">
+      <h2>CalSavers contributions</h2>
+      <p>${S.run?.run?.locked ? 'Open' : 'Once Cowork has saved the notes, review and submit payroll in OnPay. Then open'}
+        OnPay’s Payroll Register report, choose <strong>Save as PDF</strong>,
+        and upload that PDF here.</p>
+      <button class="btn btn-primary btn-huge" onclick="$('#calsaversfile').click()">Upload register PDF</button>
+      <input type="file" id="calsaversfile" accept=".pdf,application/pdf" hidden onchange="readCalSavers(this)">
+      <p class="muted" style="margin-top:12px">This reads the amounts to enter in CalSavers.
+        It does not send contributions. Complete this after each payroll.</p>
+      <div id="calsavers"></div>
+    </div>
+  </section>`;
+}
+
 VIEWS.exports = () => `
   ${runHeader()}
-  <div id="exportlist"><div class="empty">Loading…</div></div>
-
-  <div class="card">
-    <div class="spread">
-      <div>
-        <h3>CalSavers contributions</h3>
-        <p class="muted" style="margin:4px 0 0">After payroll is submitted, choose Save as PDF
-          on OnPay's Payroll Register report and upload that PDF here. This reads each CalSavers contribution,
-          ready to type into the CalSavers portal. It has to be sent within seven days
-          of the pay date.</p>
-      </div>
-      <button class="btn" onclick="$('#calsaversfile').click()">Upload register PDF</button>
-      <input type="file" id="calsaversfile" accept=".pdf,application/pdf" hidden onchange="readCalSavers(this)">
-    </div>
-    <div id="calsavers"></div>
-  </div>`;
+  ${calSaversSection()}
+  <div id="exportlist"><div class="empty">Loading…</div></div>`;
 
 VIEWS.after_exports = async () => {
   const data = await api(`/api/runs/${S.runId}/exports`);
