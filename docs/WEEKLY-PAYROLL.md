@@ -16,8 +16,11 @@ The checks are saved for this week and start fresh next week.
    app's people, hours, and total with OnPay before continuing.
 3. **Copy notes for Claude Cowork.** Paste into Claude Cowork with browser access
    to the session where OnPay is signed in. It will save and check paycheck memos.
-4. Review the payroll and submit it yourself in OnPay. Back in this app, select
-   **Mark this week finished**. Downloading or copying notes does not submit payroll.
+4. **CalSavers.** Directly below the Cowork notes step, upload the OnPay Payroll
+   Register PDF after reviewing and submitting payroll in OnPay. Enter the
+   verified contributions in CalSavers. Select **Mark this week finished** in
+   this app; CalSavers remains visible on the finished screen too.
+   Downloading or copying notes does not submit payroll.
 
 Late tips on previously paid bookings are included automatically in the next
 payroll's Tips amount and paycheck notes. Only the unpaid increase is added;
@@ -59,7 +62,8 @@ separate from the downloadable software. Use only one working payroll copy.
 ## CalSavers
 
 After submitting payroll in OnPay, open its Payroll Register report and choose
-**Save as PDF**. In this app, open **Reports → CalSavers → Upload register PDF**.
+**Save as PDF**. On the main payroll screen, directly after the Cowork notes step,
+choose **CalSavers → Upload register PDF**. It is also at the top of Reports.
 The reader checks the employee contributions against the register total before
 showing amounts to enter in CalSavers. This upload accepts PDF, not spreadsheets.
 
