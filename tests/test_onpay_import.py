@@ -318,7 +318,9 @@ class OnPayImportFile(unittest.TestCase):
         with patch.object(exports, "load_onpay_mapping", return_value=mapping):
             listing = exports.all_exports(self.payroll, self.roster)
         self.assertTrue(listing[0]["download_blocked"])
-        self.assertTrue(all(not item.get("download_blocked") for item in listing[1:]))
+        self.assertTrue(next(item for item in listing if item['key']=='onpay_notes')['download_blocked'])
+        self.assertTrue(all(not item.get("download_blocked") for item in listing
+                            if item['key'] in ('onpay_entry','onpay_lines','exceptions','summary','detail','caregiver')))
 
     def test_download_endpoint_enforces_the_block(self):
         from payroll.server import ApiError, Handler

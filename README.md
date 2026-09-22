@@ -3,7 +3,7 @@
 Turns a Sitterwise bookings export into everything you need to enter payroll
 into OnPay, with the arithmetic shown for every figure.
 
-Runs on your own computer. Payroll data stays local unless you choose to upload it to OnPay or share the notes task with Claude Cowork.
+Runs on your own computer. Payroll data stays local unless you choose to upload it to OnPay or share the private PDF folder and task with Claude Cowork.
 
 Sitterwise payroll runs **weekly, Monday through Sunday**. Pay stubs go out by
 email through OnPay on Tuesday, and direct deposit lands on Friday.
@@ -55,14 +55,17 @@ place.
 1. **Upload bookings** and choose the Monday–Sunday pay week.
 2. **Download OnPay CSV**, import it once in OnPay, and compare the people,
    hours, and total shown in the app.
-3. **Copy notes for Claude Cowork** and paste the task into Claude Cowork
-   with browser access to your signed-in OnPay session. It contains every paycheck memo,
-   employee identifiers, and amounts to verify. The task authorizes notes only.
-4. Review and submit payroll yourself in OnPay, then **Mark this week finished**
-   in the app to protect against paying the same bookings again.
+3. **Share caregiver breakdowns.** Download and unzip the caregiver PDFs. Give
+   the folder and **Copy task for Claude Cowork** text to Cowork with browser
+   access to your signed-in OnPay session. It verifies pay, uploads each person’s
+   PDF to their employee Files, enables Employee Viewable, and adds a short
+   paycheck note pointing to **OnPay → Menu → My Files**.
+4. Review and submit payroll in OnPay. **CalSavers** is directly below the PDF
+   step: upload the OnPay Payroll Register PDF and enter the verified amounts.
+   Then **Mark this week finished** in the app to prevent duplicate pay.
 
 Use fresh exports that include recently paid bookings. A late tip on one of
-those bookings is added to the next payroll's Tips item and paycheck notes,
+those bookings is added to the next payroll's Tips item and caregiver PDF,
 without paying the old wages again. Only the increase above tips already paid
 is included. After the OnPay CSV is downloaded, that payroll's late tips are
 fixed; further increases wait for the next payroll. At a month boundary, upload
@@ -246,30 +249,28 @@ Salary is pay item 1 with a cash amount and no hours, the way OnPay's own
 template writes it. The four-hour minimum rides in the regular row — guarantee
 pay is always the guarantee hours at that tier's rate, so it comes out exact.
 
-### Notes on the pay lines
+### Caregiver PDFs and the short paycheck note
 
-Ethan used to type the job dates and family names onto each OnPay payroll line
-so a caregiver could see exactly what she was being paid for. **OnPay's import
-file has no column for that** — it is eight columns and none of them carries
-text — so the app works out the wording instead and it gets typed in.
+The app makes one Sitterwise-branded PDF per caregiver, showing jobs, hours,
+rates, minimum-pay top-ups, overtime, tips, bonuses, reimbursements and scheduled
+pay. It uses the same calculated figures as the CSV; historical runs keep their
+saved rules. PDFs are generated locally and contain only that caregiver’s data.
 
-Each pay line gets the note that belongs beside it:
+Cowork’s task verifies identities and totals, uploads each individual file under
+**Workers → employee → HR → Files**, enables **Employee Viewable**, and checks the
+saved document. It then adds: “Your payroll breakdown is in OnPay > Menu > My
+Files.” Existing different documents and memos are preserved for review. Payroll
+remains unsubmitted for the operator. Never put private breakdowns in Company
+Documents, a shared all-workers folder, or another worker’s profile.
 
-```
-Regular        8.00h @ $23.00   Aug 3 Family A, Aug 5 Family B
-Overtime Premium      $11.50   1.00 hrs x $11.50 premium (Aug 5)
-Reimbursement          $76.00   Aug 6 mileage 100 mi paid
-```
+If pay changes, download the folder and task again. Amounts changed only in
+OnPay also need to be reflected in the app to appear in these breakdowns.
+See [the weekly guide](docs/WEEKLY-PAYROLL.md).
 
-They show on the **Enter in OnPay** screen with a copy button on each, and in
-the **OnPay lines and notes** export, which lists every line with its note for
-reading while typing. Mileage notes give the miles actually being *paid for*,
-not the round trip, so "100 mi" beside a 140-mile drive can't read as an
-underpayment.
+### Legacy manual line-note helper — `onpay_notes.py`
 
-### Putting the notes in — `onpay_notes.py`
-
-Caregivers see these notes on their pay stubs, so they are worth getting in.
+This optional helper remains for older workflows. The main workflow uses PDFs
+and the short My Files memo instead.
 There is no way to send them automatically: OnPay's import file has no column
 for a note, and OnPay has no API that writes payroll. They are typed in.
 

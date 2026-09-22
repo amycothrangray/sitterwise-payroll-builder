@@ -114,7 +114,9 @@ class LateTips(unittest.TestCase):
         tips=[r for r in rows if r['id']=='208']
         self.assertEqual(len(tips),1);self.assertEqual(tips[0]['cash'],Decimal('20.00'))
         self.assertIn('Late tip for 2026-09-13',tips[0]['note'])
-        self.assertIn('test-old',exports.onpay_notes_handoff(run,self.roster))
+        from payroll.statements import statement_data
+        self.assertTrue(any('test-old' in e['label'] for e in
+                            statement_data(run,run.caregivers[0])['extras']))
         self.assertEqual(run.totals()['hours_worked'],'4.00')
         self.assertEqual(run.totals()['straight_pay'],'92.00')
         self.assertEqual(len(run.caregivers),1)

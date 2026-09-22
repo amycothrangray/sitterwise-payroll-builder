@@ -19,7 +19,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parent
 OUT = Path(os.environ.get("SITTERWISE_MAC_BUILD_DIR",
                          str(Path(tempfile.gettempdir()) / "sitterwise-payroll-macos")))
-VERSION = "1.1.3"
+VERSION = "1.1.4"
 
 
 def main():
@@ -28,7 +28,7 @@ def main():
     assets.mkdir(exist_ok=True)
     fingerprint = hashlib.sha256()
     sources = [*sorted((ROOT / "payroll").glob("*.py")), *sorted((ROOT / "web").glob("*")),
-               ROOT / "desktop_main.py", ROOT / "run.py", ROOT / "rules.json", ROOT / "onpay_mapping.json"]
+               *sorted((ROOT / "branding").glob("*")), ROOT / "desktop_main.py", ROOT / "run.py", ROOT / "rules.json", ROOT / "onpay_mapping.json"]
     for source in sources:
         fingerprint.update(source.relative_to(ROOT).as_posix().encode())
         fingerprint.update(source.read_bytes())
@@ -37,7 +37,7 @@ def main():
     licenses = assets / "licenses"
     licenses.mkdir(exist_ok=True)
     shutil.copyfile(Path(sysconfig.get_path("stdlib")) / "LICENSE.txt", licenses / "Python-LICENSE.txt")
-    for package in ("openpyxl", "et-xmlfile", "pypdf", "pyinstaller", "defusedxml"):
+    for package in ("openpyxl", "et-xmlfile", "pypdf", "pyinstaller", "defusedxml", "reportlab", "Pillow"):
         dist = importlib.metadata.distribution(package)
         for file in dist.files or []:
             if file.name.upper().startswith(("LICEN", "COPYING")) and ".dist-info" in str(file):
@@ -56,12 +56,14 @@ def main():
             "--icon", str(icon), "--distpath", str(OUT / "dist"),
             "--workpath", str(OUT / "work"), "--specpath", str(OUT),
             "--add-data", str(ROOT / "web") + ":web",
+            "--add-data", str(ROOT / "branding") + ":branding",
             "--add-data", str(ROOT / "rules.json") + ":.",
             "--add-data", str(ROOT / "onpay_mapping.json") + ":.",
             "--add-data", str(assets / "build.json") + ":.",
             "--add-data", str(licenses) + ":licenses",
             "--hidden-import", "pypdf", "--hidden-import", "defusedxml.ElementTree", "--exclude-module", "tkinter",
-            "--exclude-module", "numpy", "--exclude-module", "PIL"]
+            "--exclude-module", "numpy", "--exclude-module", "charset_normalizer",
+            "--exclude-module", "PIL.ImageTk", "--exclude-module", "PIL._imagingtk"]
     identity = os.environ.get("SITTERWISE_CODESIGN_IDENTITY")
     if identity:
         args += ["--codesign-identity", identity]

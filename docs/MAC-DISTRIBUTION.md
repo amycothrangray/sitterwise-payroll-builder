@@ -1,6 +1,6 @@
 # Standalone Mac distribution
 
-The standalone app bundles Python, openpyxl and pypdf, and runs on Intel and Apple Silicon Macs with macOS 11 or later. Operators do not install Python or use GitHub Desktop.
+The standalone app bundles Python, openpyxl, pypdf, ReportLab, Pillow and the PDF brand assets, and runs on Intel and Apple Silicon Macs with macOS 11 or later. Operators do not install Python or use GitHub Desktop.
 
 Build with a universal2 Python and `packaging/requirements-macos.txt` installed:
 
@@ -32,4 +32,6 @@ The standalone launcher saves an automatic history snapshot on the first launch 
 - Verify no databases or real source exports are in the software bundle.
 - Confirm notarization is accepted, staple the ticket, and assess the final DMG.
 
-The handoff includes the existing payroll workflow: paycheck memos are entered separately in OnPay, and unmapped recurring pay still requires manual entry. Packaging does not turn those steps into an automatic integration.
+The app downloads individual caregiver PDFs and a bounded Claude Cowork task. Cowork uploads each private PDF and adds a short My Files memo; the operator reviews and submits. This is a browser handoff, not an OnPay API integration.
+
+Pillow must contain both Intel and Apple Silicon slices for a universal2 build. Build it from source for both architectures, or combine the matching official wheels with `lipo`, preserving and checking each dependency’s install name. Do not bundle a single-architecture wheel. Verify PDF generation in the packaged app, including the embedded fonts and logo.

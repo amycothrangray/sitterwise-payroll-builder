@@ -474,9 +474,9 @@ class Handler(BaseHTTPRequestHandler):
         if not item:
             raise ApiError("That export does not exist.", 404)
         if item.get("download_blocked"):
-            raise ApiError("The OnPay file cannot be downloaded yet: " + " ".join(
+            raise ApiError("This file cannot be downloaded yet: " + " ".join(
                 p["problem"] for p in item["problems"] if p.get("blocking")))
-        if key == "onpay_import" and waiting_notes(store, record):
+        if key in ("onpay_import", "caregiver_pdfs", "onpay_notes") and waiting_notes(store, record):
             raise ApiError("Saved pay changes need attention before downloading. "
                            "Open Payroll checks to apply or resolve them.")
         if key == "onpay_import" and record['status'] != 'finalized':
@@ -485,8 +485,25 @@ class Handler(BaseHTTPRequestHandler):
             with store.db:
                 store.db.execute("UPDATE runs SET late_tips_snapshot=?,tip_export_snapshot=? WHERE id=?",
                     (json.dumps(run.late_tips), json.dumps(late_tips.payments_for(run)), run_id))
+        if key == "onpay_notes" and record['status'] == 'finalized':
+            raise ApiError("This payroll is finished. Download PDFs for your records; the Cowork task is for an unsubmitted payroll.")
+        if key == "caregiver_pdfs":
+            from . import statements
+            snapshot = json.loads(record.get('totals_snapshot') or '{}')
+            if record['status'] == 'finalized' and any(
+                    snapshot.get(k) != run.totals()[k] for k in
+                    ('caregivers', 'hours_worked', 'taxable_earnings', 'reimbursements', 'total_paid')):
+                raise ApiError("These figures no longer match the finished payroll record. Review the saved payroll before sharing PDFs.")
+            try:
+                content = statements.create_archive(run, roster)
+            except ValueError as exc:
+                raise ApiError(str(exc))
+            except ImportError:
+                raise ApiError("PDF support is missing. Install the current Sitterwise Payroll app and reopen it.")
+        else:
+            content = item["content"].encode("utf-8-sig")
         store.log("export_downloaded", item["name"], run_id)
-        self._send(200, item["content"].encode("utf-8-sig"),
+        self._send(200, content,
                    item.get("content_type", "text/csv; charset=utf-8"),
                    {"Content-Disposition": f'attachment; filename="{item["filename"]}"'})
 
@@ -995,7 +1012,7 @@ def build_id() -> str:
     except OSError:
         pass
     fingerprint = hashlib.sha256()
-    for folder, pattern in (("payroll", "*.py"), ("web", "*")):
+    for folder, pattern in (("payroll", "*.py"), ("web", "*"), ("branding", "*")):
         for path in sorted((root / folder).glob(pattern)):
             if path.is_file():
                 fingerprint.update(path.relative_to(root).as_posix().encode("utf-8"))

@@ -68,13 +68,17 @@ class CompletePayrollAndNotes(unittest.TestCase):
                              roster=self.roster, recurring=[self.recurring])
 
     def test_handoff_covers_every_person_once_and_keeps_operator_notes_private(self):
+        # The broad import fixture includes a deliberately duplicated booking.
+        # A shareable statement must reject it; exercise the complete valid set here.
+        self.run.caregivers = [c for c in self.run.caregivers
+                               if len({j.booking_id for j in c.jobs}) == len(c.jobs)]
         text = exports.onpay_notes_handoff(self.run, self.roster)
         people = json.loads(text[text.index('{\n  "paychecks"'):])['paychecks']
         self.assertEqual(len(people), len(self.run.caregivers))
         self.assertEqual(len({p['caregiver'] for p in people}), len(people))
         admin = next(p for p in people if p['caregiver'] == 'Test Administrator')
         self.assertEqual(admin['expected_gross_including_reimbursements'], '225.00')
-        self.assertEqual(admin['paycheck_memo'], 'Recurring pay: $225.00')
+        self.assertEqual(admin['paycheck_memo'], 'Your payroll breakdown is in OnPay > Menu > My Files.')
         self.assertNotIn('Operator:', text)
         self.assertIn('reopen or reload', text)
         self.assertIn('payroll remains unsubmitted', text)
@@ -84,7 +88,7 @@ class CompletePayrollAndNotes(unittest.TestCase):
         run = build_run(FIXTURE, self.rules, date(2026, 8, 10), date(2026, 8, 16),
                         roster=self.roster, recurring=[self.recurring])
         text = exports.onpay_notes_handoff(run, self.roster)
-        self.assertIn('Recurring pay: $150.00', text)
+        self.assertIn('"expected_gross_including_reimbursements": "150.00"', text)
         self.assertNotIn('225.00', text)
 
     def test_a_missing_employee_identifier_blocks_the_complete_download(self):
